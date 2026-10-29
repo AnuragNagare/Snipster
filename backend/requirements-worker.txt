@@ -1,0 +1,26 @@
+# ─── Worker + local dev: run on your PC ────────────────────────────────────────
+#   pip install -r requirements-worker.txt
+# Everything the API needs, plus the heavy processing stack.
+-r requirements.txt
+
+# Running things locally
+uvicorn[standard]==0.30.1
+alembic==1.13.2
+psycopg2-binary==2.9.12      # sync DB driver used by Celery tasks
+
+# AI / ML
+faster-whisper==1.2.1
+# CTranslate2 (faster-whisper's backend) needs CUDA 12's cuBLAS and cuDNN for GPU
+# transcription. Harmless on CPU-only machines.
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.1.0.70
+google-generativeai==0.7.2
+
+# Video (ffmpeg itself must also be installed: winget install Gyan.FFmpeg)
+ffmpeg-python==0.2.0
+yt-dlp>=2025.1.15
+
+# Utilities
+python-dotenv==1.0.1
+aiofiles==23.2.1
+Pillow==10.4.0

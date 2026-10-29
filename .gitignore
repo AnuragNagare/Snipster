@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# Alembic
+backend/migrations/versions/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Media / temp files
+*.mp4
+*.mp3
+*.wav
+*.srt
+/tmp/
+/temp/
+
+# Vercel CLI link folder
+.vercel/
+
+# Local-only: assistant settings (include an OAuth client secret), safety copies, run output
+.claude/
+_automation_backup/
+_backup_manual_stage/
+backend/logs/
+/Logs.txt
+/screenshot_*.png

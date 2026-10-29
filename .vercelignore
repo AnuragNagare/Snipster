@@ -1,0 +1,30 @@
+# Never upload these. The API bundle is capped at 500 MB, and some of this is secret.
+
+# Secrets
+.env
+.env.*
+!.env.example
+.claude/
+
+# Local copies of the project and run artefacts
+_automation_backup/
+_backup_manual_stage/
+/Logs.txt
+/*.pdf
+/*.png
+/posting-schedule.txt
+
+# Python
+backend/.venv/
+**/__pycache__/
+**/.pytest_cache/
+backend/tests/
+backend/requirements-worker.txt
+backend/requirements-dev.txt
+
+# Node (Vercel installs and builds the frontend itself)
+**/node_modules/
+frontend/dist/
+
+# Vercel's own folder
+.vercel/

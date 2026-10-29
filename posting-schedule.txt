@@ -1,0 +1,78 @@
+SNIPSTER - POSTING SCHEDULE (India + International audience)
+============================================================
+
+WHAT IS SOLID AND WHAT ISN'T
+- Solid: Shorts and Reels are pushed mainly by the algorithm, not by your
+  subscribers' feeds. Retention and swipe-away rate in the first few seconds
+  matter far more than the posting hour. Timing is a modest lever.
+- Solid: Posting 30-60 minutes before a high-activity window helps. The
+  platform needs time to test the clip on a small audience before the peak.
+- Not known: The exact best hour for your niche. That depends on who watches
+  you. YouTube Studio shows it for your channel once you have some views:
+  Analytics -> Audience -> "When your viewers are on YouTube".
+- Treat everything below as a hypothesis to test for 3-4 weeks, not a guarantee.
+
+
+WHY THESE WINDOWS (IST = UTC+5:30)
+India's prime time lines up with morning or afternoon in the West.
+
+  IST        US Eastern   US Pacific   UK
+  12:30 PM   ~3 AM        ~12 AM       ~8 AM
+  8:00 PM    ~10:30 AM    ~7:30 AM     ~3:30 PM
+  9:00 PM    ~11:30 AM    ~8:30 AM     ~4:30 PM
+  11:30 PM   ~2 PM        ~11 AM       ~7 PM
+
+US figures use daylight time. In winter subtract one hour for the US; for the
+UK the gap becomes 5.5 hours.
+
+India has by far the largest audience, so anchor on Indian habits and pick
+slots that also catch the West.
+
+
+STARTING SCHEDULE (2 slots a day)
+- Slot A: 12:00-12:30 PM IST
+  Indian lunch break; UK is waking up.
+- Slot B: 7:30-8:30 PM IST  (main slot)
+  Indian evening peak; US waking up, UK in the afternoon.
+- Optional late slot: ~11 PM IST
+  Indians scroll late; US East coast is mid-afternoon. Test it, don't rely on it.
+
+  Mon-Fri    Slot A and Slot B
+  Saturday   One post at 10-11 AM IST and one at 8 PM IST
+             (weekend usage is spread out later)
+  Sunday     Slot B, plus a second evening post if you have material
+
+This needs roughly 10-14 clips a week. The app makes about 5 clips per long
+video, so 2-3 source videos a week would cover it. If that's too much, start
+with 1 post a day at Slot B. Consistency matters more than volume.
+
+
+INSTAGRAM REELS
+Use the same evening window (8-10 PM IST); Instagram skews toward evening and
+weekend activity. Cross-post the same clip a few hours after YouTube rather
+than at the same minute.
+
+
+HOW TO FIND YOUR REAL BEST TIMES
+1. For 3-4 weeks, vary the slots across weekdays and note first-24-hour views
+   for each post.
+2. Compare by slot, not by single clips - one viral clip will mislead you.
+3. Then check the YouTube Studio "when your viewers are on" chart and shift
+   toward the hours that show a pattern.
+4. If your audience is mostly Indian, the Western overlap matters less. If
+   analytics show 30%+ from the US or UK, lean into Slot B and the late slot.
+
+
+WHAT MOVES VIEWS AND FOLLOWERS MORE THAN TIMING
+- A strong hook in the first 1-2 seconds. Check each clip opens on the
+  interesting part.
+- One clear idea per clip, usually under 45 seconds.
+- Captions readable on mute (the renderer already burns them in).
+- A consistent niche, so the algorithm knows who to show you to.
+- Replying to comments in the first hour.
+
+
+CAVEAT ABOUT THE SNIPSTER APP
+In the code as it stands, the "scheduled publish" option creates a job but
+nothing runs it later. To post at these times today, click publish at the
+right time or use YouTube Studio's own scheduling.

@@ -1,0 +1,27 @@
+# ─── API: this is what the Vercel Function installs ─────────────────────────────
+# Keep it lean. The Python function bundle is capped at 500 MB, and the API never
+# touches Whisper, ffmpeg, yt-dlp or Gemini — those run in the worker on your PC
+# (requirements-worker.txt). If you add a package here, check the bundle still builds.
+
+# Web framework
+fastapi==0.111.0
+pydantic==2.8.2
+pydantic-settings==2.3.4
+python-multipart==0.0.9      # the small-file multipart upload route
+
+# Database (async). Neon over TLS.
+sqlalchemy==2.0.31
+asyncpg==0.30.0
+greenlet==3.1.1
+
+# Auth / security
+cryptography==42.0.8
+httpx==0.27.0
+
+# Job queue — the API only *publishes* tasks; the worker consumes them
+celery==5.4.0
+kombu==5.3.7
+redis==5.0.7
+
+# Storage (S3-compatible: Cloudflare R2)
+boto3==1.35.99

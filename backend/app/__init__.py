@@ -1,0 +1,1 @@
+# Snipster backend package
