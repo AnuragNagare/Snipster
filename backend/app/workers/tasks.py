@@ -354,10 +354,9 @@ def generate_caption_task(self, clip_id: str):
 
 @celery_app.task(bind=True, name="app.workers.tasks.publish_clip_task", max_retries=3)
 def publish_clip_task(self, job_id: str):
-    """Publish a clip to its target platform (YouTube or Instagram)."""
+    """Publish a clip to YouTube."""
     from app.db.models import Clip, Platform, PublishJob, PublishStatus, User
     from app.services.youtube import youtube_service
-    from app.services.instagram import instagram_service
     from sqlalchemy import select
 
     logger.info(f"[PUBLISH] Starting job {job_id}")
@@ -376,8 +375,6 @@ def publish_clip_task(self, job_id: str):
 
         if job.platform == Platform.YOUTUBE:
             result = youtube_service.upload(clip=clip, user=user)
-        elif job.platform == Platform.INSTAGRAM:
-            result = instagram_service.publish(clip=clip, user=user)
         else:
             raise ValueError(f"Unknown platform: {job.platform}")
 

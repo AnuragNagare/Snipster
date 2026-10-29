@@ -33,11 +33,6 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
 
-    # Meta OAuth (Instagram)
-    META_APP_ID: str = ""
-    META_APP_SECRET: str = ""
-    META_REDIRECT_URI: str = "http://localhost:8000/api/auth/meta/callback"
-
     # App
     SECRET_KEY: str = "change-me"
     FRONTEND_URL: str = "http://localhost:5173"

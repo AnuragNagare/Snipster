@@ -67,7 +67,6 @@ Project → **Settings → Environment Variables**. Add these for **Production**
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From Google Cloud |
 | `GOOGLE_REDIRECT_URI` | `https://<your-domain>/api/auth/google/callback` |
 | `FRONTEND_URL` | `https://<your-domain>` |
-| `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI` | Only if you use Instagram |
 
 Not needed on Vercel: `GEMINI_API_KEY` and the `WHISPER_*` / `FFMPEG_*` settings. The API never
 uses them.

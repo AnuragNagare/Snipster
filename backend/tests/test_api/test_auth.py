@@ -150,9 +150,7 @@ PROTECTED = [
     ("GET", "/api/auth/accounts"),
     ("GET", "/api/auth/session"),
     ("DELETE", "/api/auth/google/disconnect"),
-    ("DELETE", "/api/auth/meta/disconnect"),
     ("POST", "/api/auth/google/start"),
-    ("POST", "/api/auth/meta/start"),
 ]
 
 
@@ -197,19 +195,11 @@ async def test_google_start_returns_a_consent_url_with_signed_state(client, monk
     assert auth.verify(q["state"][0], "oauth-google")
 
 
-async def test_meta_start_uses_its_own_state_kind(client):
-    r = await client.post("/api/auth/meta/start", headers=await bearer(client))
-    state = parse_qs(urlparse(r.json()["url"]).query)["state"][0]
-    assert auth.verify(state, "oauth-meta") and auth.verify(state, "oauth-google") is None
-
-
 @pytest.mark.parametrize("path,wrong", [
     ("/api/auth/google/callback", ""),
     ("/api/auth/google/callback", "forged"),
-    ("/api/auth/google/callback", auth.issue("oauth-meta", 60)),     # the other provider's state
+    ("/api/auth/google/callback", auth.issue("oauth-other", 60)),    # a state of another kind
     ("/api/auth/google/callback", auth.issue("session", 60)),        # a login token is not a state
-    ("/api/auth/meta/callback", ""),
-    ("/api/auth/meta/callback", auth.issue("oauth-google", 60)),
 ])
 async def test_callback_without_the_right_state_is_refused_before_touching_google(client, path, wrong):
     r = await client.get(path, params={"code": "anything", "state": wrong})
@@ -246,13 +236,12 @@ async def test_system_info_returns_what_the_worker_reported(client, monkeypatch)
 # ─── Safety net: no route can be added without a login ────────────────────────
 
 # Open on purpose: the login itself, the UI's "is a login needed?" probe, health, and the
-# two OAuth callbacks (the browser arrives from Google/Meta with no token; they are
+# OAuth callback (the browser arrives from Google with no token; they are
 # protected by the signed `state` tested above).
 OPEN = {
     ("GET", "/api/auth/config"),
     ("POST", "/api/auth/session"),
     ("GET", "/api/auth/google/callback"),
-    ("GET", "/api/auth/meta/callback"),
 }
 
 
@@ -265,7 +254,7 @@ def _api_routes():
 
 
 def test_the_route_inventory_is_not_empty():
-    assert len(list(_api_routes())) >= 25                     # guards against the walk silently finding nothing
+    assert len(list(_api_routes())) >= 20                     # guards against the walk silently finding nothing
 
 
 @pytest.mark.parametrize("method,concrete,template", sorted(_api_routes(), key=lambda r: (r[2], r[0])))
@@ -274,3 +263,46 @@ async def test_no_api_route_answers_without_a_login(client, method, concrete, te
         pytest.skip("open on purpose")
     r = await client.request(method, concrete)
     assert r.status_code == 401, f"{method} {template} is reachable without a login ({r.status_code})"
+
+
+# ─── YouTube only ─────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("method,path", [
+    ("POST", "/api/auth/meta/start"), ("GET", "/api/auth/meta/callback"), ("GET", "/api/auth/meta/login"),
+    ("DELETE", "/api/auth/meta/disconnect"), ("GET", "/api/auth/google/login"),
+])
+async def test_instagram_and_the_old_login_routes_are_gone(client, method, path):
+    r = await client.request(method, path, headers=await bearer(client))
+    assert r.status_code in (404, 405), f"{method} {path} -> {r.status_code}"
+
+
+async def test_accounts_report_youtube_only(client, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.deps import get_session
+
+    user = SimpleNamespace(yt_access_token="enc", yt_channel_name="My Channel")
+
+    class FakeDb:
+        async def execute(self, _q):
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(first=lambda: user))
+
+    app.dependency_overrides[get_session] = lambda: FakeDb()
+    try:
+        r = await client.get("/api/auth/accounts", headers=await bearer(client))
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200
+    assert r.json() == {"youtube_connected": True, "youtube_channel_name": "My Channel"}
+
+
+async def test_publishing_to_instagram_is_rejected(client):
+    r = await client.post("/api/clips/00000000-0000-0000-0000-000000000000/publish",
+                          json={"platforms": ["instagram"]}, headers=await bearer(client))
+    assert r.status_code == 422
+
+
+def test_the_platform_list_is_youtube_only():
+    from app.db.models import Platform
+
+    assert [p.value for p in Platform] == ["youtube"]

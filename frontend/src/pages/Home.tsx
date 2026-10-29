@@ -65,7 +65,7 @@ export default function Home() {
             🎬 Snipster
           </h1>
           <p className="text-gray-400 text-lg">
-            Turn one long video into multiple Shorts & Reels — in minutes.
+            Turn one long video into multiple YouTube Shorts — in minutes.
           </p>
         </div>
 

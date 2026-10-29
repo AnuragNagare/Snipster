@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, RefreshCw, Play, Camera } from "lucide-react";
+import { ExternalLink, RefreshCw, Play } from "lucide-react";
 
 import { getPublishJobs, retryPublishJob } from "../api";
 import type { PublishJob } from "../types";
@@ -7,13 +7,6 @@ import type { PublishJob } from "../types";
 interface Props {
   clipId: string;
 }
-
-const platformIcon = (platform: string) =>
-  platform === "youtube" ? (
-    <Play size={13} className="text-red-400" />
-  ) : (
-    <Camera size={13} className="text-pink-400" />
-  );
 
 const statusStyle: Record<string, string> = {
   queued: "text-gray-400",
@@ -60,7 +53,7 @@ export default function PublishStatus({ clipId }: Props) {
           className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2"
         >
           <div className="flex items-center gap-2">
-            {platformIcon(job.platform)}
+            <Play size={13} className="text-red-400" />
             <span className="text-xs text-gray-300 capitalize">{job.platform}</span>
           </div>
 

@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Snipster API",
-    description="YouTube → Shorts/Reels repurposing tool",
+    description="Long video → YouTube Shorts",
     version="1.0.0",
     lifespan=lifespan,
 )

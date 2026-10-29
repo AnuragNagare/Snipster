@@ -46,7 +46,6 @@ class ApprovalStatus(str, enum.Enum):
 
 class Platform(str, enum.Enum):
     YOUTUBE = "youtube"
-    INSTAGRAM = "instagram"
 
 
 class PublishStatus(str, enum.Enum):
@@ -60,7 +59,7 @@ class PublishStatus(str, enum.Enum):
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 class User(Base):
-    """Single-user model storing OAuth tokens for YouTube and Instagram."""
+    """Single-user model storing the OAuth tokens for YouTube."""
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -75,11 +74,6 @@ class User(Base):
     yt_token_expiry: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     yt_channel_id: Mapped[str] = mapped_column(String(128), nullable=True)
     yt_channel_name: Mapped[str] = mapped_column(String(256), nullable=True)
-
-    # Instagram / Meta OAuth (encrypted)
-    ig_access_token: Mapped[str] = mapped_column(Text, nullable=True)
-    ig_user_id: Mapped[str] = mapped_column(String(128), nullable=True)
-    ig_username: Mapped[str] = mapped_column(String(128), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

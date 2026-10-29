@@ -116,8 +116,6 @@ class PublishJobResponse(BaseModel):
 class ConnectedAccountsResponse(BaseModel):
     youtube_connected: bool
     youtube_channel_name: Optional[str] = None
-    instagram_connected: bool
-    instagram_username: Optional[str] = None
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────

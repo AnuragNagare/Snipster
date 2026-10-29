@@ -74,7 +74,7 @@ class LLMService:
         ts_lines = [f"[{w['start']:.1f}s] {w['text']}" for w in transcript[::3]]  # sample every 3rd word
         ts_text = "\n".join(ts_lines[:600])  # limit context length
 
-        prompt = f"""You are a social media content expert. Analyze this video transcript and identify exactly 3-5 of the most engaging, self-contained moments that would work well as a 15-60 second YouTube Short or Instagram Reel.
+        prompt = f"""You are a social media content expert. Analyze this video transcript and identify exactly 3-5 of the most engaging, self-contained moments that would work well as a 15-60 second YouTube Short.
 
 Each clip should:
 - Be self-contained (makes sense without context)

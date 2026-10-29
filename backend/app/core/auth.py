@@ -2,7 +2,7 @@
 
 No database and no extra dependency — a token is `base64(payload).base64(HMAC)`
 signed with SECRET_KEY. The same signing is used for the short-lived OAuth
-`state` value, which ties a Google/Meta callback to a login that really started here.
+`state` value, which ties a Google callback to a login that really started here.
 """
 
 import base64

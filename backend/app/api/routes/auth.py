@@ -1,4 +1,4 @@
-"""Login, plus OAuth routes for Google (YouTube) and Meta (Instagram)."""
+"""Login, plus the Google (YouTube) OAuth routes."""
 
 from urllib.parse import urlencode
 
@@ -139,62 +139,6 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
     return RedirectResponse(url=f"{settings.FRONTEND_URL}/settings?yt=connected")
 
 
-# ─── Meta / Instagram ────────────────────────────────────────────────────────
-
-META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
-META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
-META_ME_URL = "https://graph.facebook.com/v19.0/me"
-
-
-@router.post("/meta/start", dependencies=[Depends(require_admin)])
-async def meta_start():
-    """The Meta consent-screen URL to send the browser to, bound to this login by `state`."""
-    params = {
-        "client_id": settings.META_APP_ID,
-        "redirect_uri": settings.META_REDIRECT_URI,
-        "scope": "instagram_basic,instagram_content_publish,pages_read_engagement",
-        "response_type": "code",
-        "state": auth.issue("oauth-meta", auth.OAUTH_TTL),
-    }
-    return {"url": f"{META_AUTH_URL}?{urlencode(params)}"}
-
-
-@router.get("/meta/callback")
-async def meta_callback(code: str, state: str = "", db: AsyncSession = Depends(get_session)):
-    """Exchange Meta auth code for long-lived access token."""
-    _require_state(state, "oauth-meta")
-    async with httpx.AsyncClient() as client:
-        token_resp = await client.get(
-            META_TOKEN_URL,
-            params={
-                "client_id": settings.META_APP_ID,
-                "client_secret": settings.META_APP_SECRET,
-                "redirect_uri": settings.META_REDIRECT_URI,
-                "code": code,
-            },
-        )
-    if token_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to exchange Meta auth code.")
-
-    access_token = token_resp.json()["access_token"]
-
-    # Get Instagram user ID
-    async with httpx.AsyncClient() as client:
-        me_resp = await client.get(
-            META_ME_URL,
-            params={"fields": "id,name", "access_token": access_token},
-        )
-    me_data = me_resp.json()
-
-    user = await _get_or_create_user(db)
-    user.ig_access_token = encrypt_token(access_token)
-    user.ig_user_id = me_data.get("id", "")
-    user.ig_username = me_data.get("name", "")
-
-    logger.info(f"Instagram connected: {user.ig_username}")
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}/settings?ig=connected")
-
-
 # ─── Status ───────────────────────────────────────────────────────────────────
 
 @router.get("/accounts", response_model=ConnectedAccountsResponse, dependencies=[Depends(require_admin)])
@@ -204,8 +148,6 @@ async def get_connected_accounts(db: AsyncSession = Depends(get_session)):
     return ConnectedAccountsResponse(
         youtube_connected=bool(user.yt_access_token),
         youtube_channel_name=user.yt_channel_name,
-        instagram_connected=bool(user.ig_access_token),
-        instagram_username=user.ig_username,
     )
 
 
@@ -217,12 +159,3 @@ async def disconnect_youtube(db: AsyncSession = Depends(get_session)):
     user.yt_channel_id = None
     user.yt_channel_name = None
     return {"message": "YouTube disconnected."}
-
-
-@router.delete("/meta/disconnect", dependencies=[Depends(require_admin)])
-async def disconnect_instagram(db: AsyncSession = Depends(get_session)):
-    user = await _get_or_create_user(db)
-    user.ig_access_token = None
-    user.ig_user_id = None
-    user.ig_username = None
-    return {"message": "Instagram disconnected."}

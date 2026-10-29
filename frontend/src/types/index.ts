@@ -11,7 +11,7 @@ export type RenderStatus = "pending" | "rendering" | "done" | "failed";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
-export type Platform = "youtube" | "instagram";
+export type Platform = "youtube";
 
 export type PublishStatus =
   | "queued"
@@ -77,6 +77,4 @@ export interface PublishJob {
 export interface ConnectedAccounts {
   youtube_connected: boolean;
   youtube_channel_name?: string;
-  instagram_connected: boolean;
-  instagram_username?: string;
 }

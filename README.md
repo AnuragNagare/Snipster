@@ -1,6 +1,6 @@
 # Snipster 🎬
 
-> Turn one long-form YouTube video into multiple YouTube Shorts + Instagram Reels — with you in control of every publish.
+> Turn one long-form video into multiple YouTube Shorts — with you in control of every publish.
 
 ## How it runs
 
@@ -32,7 +32,7 @@ Browser ──► Vercel ── UI (React) + API (FastAPI) ──► Neon Postgr
 | Transcription | faster-whisper |
 | LLM | Gemini |
 | Rendering | ffmpeg |
-| Publishing | YouTube Data API v3 · Instagram Graph API |
+| Publishing | YouTube Data API v3 |
 
 ## Deploying
 
@@ -103,5 +103,4 @@ Snipster/
 | M3 | ffmpeg Render Pipeline | ⏳ Pending |
 | M4 | Review Dashboard | ⏳ Pending |
 | M5 | YouTube OAuth + Publish | ⏳ Pending |
-| M6 | Instagram OAuth + Publish | ⏳ Pending |
-| M7 | Polish & Reliability | ⏳ Pending |
+| M6 | Polish & Reliability | ⏳ Pending |

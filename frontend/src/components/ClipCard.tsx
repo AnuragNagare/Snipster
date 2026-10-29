@@ -4,14 +4,13 @@ import {
   XCircle,
   Edit2,
   Play,
-  Camera,
   Clock,
   Loader2,
 } from "lucide-react";
 
 import { approveClip, rejectClip, publishClip } from "../api";
 import { useAppStore } from "../store";
-import type { Clip, Platform } from "../types";
+import type { Clip } from "../types";
 import ClipEditor from "./ClipEditor";
 import PublishStatus from "./PublishStatus";
 
@@ -52,11 +51,11 @@ export default function ClipCard({ clip }: Props) {
     }
   };
 
-  const handlePublish = async (platforms: Platform[]) => {
+  const handlePublish = async () => {
     setPublishing(true);
     try {
-      await publishClip(clip.id, platforms);
-      showToast(`Publishing to ${platforms.join(" & ")}…`, "success");
+      await publishClip(clip.id, ["youtube"]);
+      showToast("Publishing to YouTube Shorts…", "success");
       setShowPublishJobs(true);
     } catch (err: any) {
       showToast(err?.response?.data?.detail || "Publish failed.", "error");
@@ -153,30 +152,17 @@ export default function ClipCard({ clip }: Props) {
 
       {/* Publish buttons (approved clips) */}
       {clip.approval_status === "approved" && (
-        <div className="p-4 pt-0 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => handlePublish(["youtube"])}
-              disabled={publishing || !accounts?.youtube_connected}
-              className="flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xs font-medium py-2 rounded-lg transition-colors"
-            >
-              <Play size={13} /> Shorts
-            </button>
-            <button
-              onClick={() => handlePublish(["instagram"])}
-              disabled={publishing || !accounts?.instagram_connected}
-              className="flex items-center justify-center gap-1 bg-pink-700 hover:bg-pink-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xs font-medium py-2 rounded-lg transition-colors"
-            >
-              <Camera size={13} /> Reels
-            </button>
-          </div>
+        <div className="p-4 pt-0">
           <button
-            onClick={() => handlePublish(["youtube", "instagram"])}
-            disabled={publishing || (!accounts?.youtube_connected && !accounts?.instagram_connected)}
-            className="w-full flex items-center justify-center gap-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xs font-medium py-2 rounded-lg transition-colors"
+            onClick={handlePublish}
+            disabled={publishing || !accounts?.youtube_connected}
+            className="w-full flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xs font-medium py-2 rounded-lg transition-colors"
           >
-            Publish Both
+            <Play size={13} /> Publish to YouTube Shorts
           </button>
+          {!accounts?.youtube_connected && (
+            <p className="text-xs text-gray-500 mt-2">Connect YouTube in Settings to publish.</p>
+          )}
         </div>
       )}
 

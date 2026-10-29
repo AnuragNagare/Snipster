@@ -152,17 +152,8 @@ export async function startGoogleLogin(): Promise<string> {
   return res.data.url;
 }
 
-export async function startMetaLogin(): Promise<string> {
-  const res = await api.post<{ url: string }>("/auth/meta/start");
-  return res.data.url;
-}
-
 export async function disconnectYoutube(): Promise<void> {
   await api.delete("/auth/google/disconnect");
-}
-
-export async function disconnectInstagram(): Promise<void> {
-  await api.delete("/auth/meta/disconnect");
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
