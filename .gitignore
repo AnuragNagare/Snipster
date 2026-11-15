@@ -57,3 +57,6 @@ _backup_manual_stage/
 backend/logs/
 /Logs.txt
 /screenshot_*.png
+
+# Celery beat schedule file
+celerybeat-schedule*

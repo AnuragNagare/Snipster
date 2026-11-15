@@ -1,238 +1,192 @@
-# Snipster Pipeline Speedup — Plan (#2: compute + I/O optimisations)
+# Snipster: Hindi support + language-aware captions: Plan
 
-**Scope:** make the existing pipeline faster. Does **not** touch the Celery queue-routing
-stall (`task_routes` vs. missing `-Q`) — that is tracked separately as #1.
+Status: Phases 1-6 DONE in code. Still unverified: a real Hindi video end to end (Whisper accuracy, Gemini Hindi caption), and the migration on Neon. Track progress in `changes.md`; background in `context.md`.
 
-**Verified on this machine before writing this plan:**
+(The previous `plan.md` was the finished pipeline-speedup plan. It is still in git history at commit `cd37b23`.)
 
-| Check | Result |
-|---|---|
-| GPU | NVIDIA RTX 3050, 6 GB, driver 610.62 |
-| `ctranslate2.get_cuda_device_count()` | `1` |
-| `WhisperModel("base.en", device="cuda", compute_type="float16")` | loads OK — **but see below** |
-| ffmpeg | 9.0.1 gyan full — `h264_nvenc`, `nvdec`, `cuvid`, `libass` all present |
+## Goal
 
-**Correction, found during implementation.** That third row was a bad check: constructing
-the model on CUDA succeeds even when the GPU cannot actually run it — the failure only
-appears on the first *encode*. It does fail here:
+1. Videos in Hindi transcribe correctly.
+2. The app detects the spoken language (English or Hindi) and writes the post caption, hashtags
+   and burned-in subtitles in that language. The caption stays editable by the user.
 
-```
-RuntimeError: Library cublas64_12.dll is not found or cannot be loaded
-```
+Out of scope for now: auto-finding trending videos and unattended posting (see "Deferred track").
 
-This machine has the CUDA **11.8** toolkit (`cublas64_11.dll`); CTranslate2 4.8.1 wants
-CUDA **12**. It already bundles `cudnn64_9.dll`, so cuBLAS was the only gap. Fixed by
-adding `nvidia-cublas-cu12` to `requirements.txt` plus a `_register_cuda_dlls()` helper
-that preloads the DLL — `os.add_dll_directory` alone is not enough, because that only
-affects `LoadLibraryEx` with the user-dirs flag and CTranslate2's native code calls plain
-`LoadLibrary`. A `_smoke_test()` now forces one real encode at load time, so a broken GPU
-falls back to CPU immediately instead of dying mid-transcription.
+## Phases: 6 (Hindi work, done) + 8 (automation track A1-A8, planned, below)
 
-**This was almost certainly the actual bug.** `faster_whisper.WhisperModel` defaults to
-`device="auto"`, which selects CUDA whenever a GPU is visible — so the original code was
-picking the GPU and then raising on the first encode, every time.
+### Phase 1: Multilingual transcription [DONE]
+- Change the default `WHISPER_MODEL` from `base.en` to a multilingual model. Start with `medium`
+  with `int8_float16` on the RTX 3050 6 GB. `large-v3` is a later option if VRAM allows.
+- Pass `language=None` so faster-whisper auto-detects. Add an optional `WHISPER_LANGUAGE` override.
+- `transcribe()` keeps returning the word list (the renderer and LLM read that shape). The detected
+  language is returned separately, so nothing downstream breaks.
+- Files: `core/config.py`, `services/transcription.py`, `.env.example`.
 
----
+### Phase 2: Store the language [DONE]
+- New nullable column `source_videos.language` (String(8)).
+- Alembic migration (second revision after `54b0d5b7980b`).
+- `transcribe_video_task` saves it. Expose it on `VideoStatusResponse` and `ClipResponse`.
+- Files: `db/models.py`, `db/schemas.py`, `workers/tasks.py`, `migrations/versions/`.
 
-## The four changes
+### Phase 3: Language-aware Gemini prompts [DONE]
+- `select_clips` and `generate_caption` get the language and instruct Gemini to write caption and
+  hashtags in it (Devanagari for `hi`). Keep the "respond ONLY with JSON" contract.
+- Fix the transcript sampling that caps clip selection at about the first 12 minutes (every 3rd
+  word, 600 lines). Optional; NOT done.
+- Files: `services/llm.py`, `workers/tasks.py`.
 
-### 1. Download the source **once**, not 6×
+### Phase 4: Devanagari-safe burned subtitles [DONE]
+- Set a Devanagari-capable font in `_SUBTITLE_STYLE` (`FontName=Nirmala UI` on Windows) when the
+  language is not English. Verify libass shapes conjuncts correctly.
+- Keep the 4-words-per-line grouping. Check that Hindi lines are not too wide at FontSize 18.
+- Files: `services/renderer.py` (the language is passed in from `render_clip_task`).
 
-**Today:** `tasks.py:120` downloads the full source from R2 to transcribe, then
-`tasks.py:217` downloads *the entire source again inside every `render_clip_task`*.
-A 5-clip job pulls the full file **6 times**. For URL jobs the file was also just
-downloaded from YouTube and thrown away (`tasks.py:52`, `TemporaryDirectory`).
+### Phase 5: Frontend [DONE]
+- Show the detected language (badge on Review).
+- Caption/hashtag editing already works through `ClipEditor`. Confirm Devanagari displays and saves.
+- Burned-in subtitles are NOT editable by hand. That needs a separate feature and is not in this plan.
+- Files: `types/index.ts`, `pages/Review.tsx`, `components/ClipCard.tsx`.
 
-**Change:** new `backend/app/services/media_cache.py`
+### Phase 6: Tests and real-world verification [PARTLY DONE: see changes.md]
+- Unit tests: language passes through; the migration applies; the prompt includes the language.
+- Real check: one Hindi clip and one English clip through the whole pipeline on the PC worker.
+  Look at the transcript, the subtitles in the rendered file, and the caption.
+- Record the measured Hindi transcription time on the GPU.
 
-```python
-get_local_source(video_id, storage_key) -> str   # returns a local path
-put_local_source(video_id, src_path) -> str      # seed cache from an existing file
-release(video_id) -> None                        # drop the cached copy
-```
+## Automation track: A1-A8 DONE in code. Not yet run against real YouTube, Redis, Neon or a browser
 
-- Cache root: `settings.MEDIA_CACHE_DIR` (default `<tempdir>/snipster-cache/{video_id}/source.mp4`).
-- Download to `source.mp4.part` then `os.replace()` — atomic, so a second task never
-  reads a half-written file.
-- Lock file per video so two concurrent renders don't both download.
-- `download_video_task` calls `put_local_source()` with the file yt-dlp just produced,
-  **before** the `TemporaryDirectory` unwinds → URL jobs then do zero R2 downloads.
-- `release(video_id)` once every clip of that video has reached `DONE`/`FAILED`,
-  plus an age sweep (>6 h) on cache access.
+Goal: on a schedule, the app picks a video from an allowed source, clips and captions it, approves
+the clips that pass checks, posts them to YouTube, tells you when something breaks, and shows all of
+it on an Activity page.
 
-**Effect:** 6 full downloads → 1 (upload jobs) or 0 (URL jobs). On a home connection
-with a 1 GB source this is usually the single largest win.
+Decisions already made
+- Source: the user's OWN channel uploads only. Trending videos from other creators are out: copying
+  them is infringement and "reused content" under YouTube policy. Creative Commons is not planned.
+- Hosting: Vercel (UI + API) + Neon + R2 + hosted Redis, as now. The worker stays on the PC for now.
+  A GPU-cloud worker is a later, separate plan.
+- Defaults I will use unless told otherwise (all become settings, changeable on the dashboard):
+  1 video per run, 2 clips posted per video, at most 3 posts per day, first uploads PRIVATE,
+  dry-run ON until the user switches it off, alerts via Telegram.
 
----
+User actions (cannot be done in code; the automation is not fully live without them)
+- U1. Move the Google OAuth consent screen from Testing to Production (else the sign-in dies after 7 days).
+- U2. Pass the YouTube API compliance audit (else every upload is forced private).
+- U3. Request a quota increase if more than about 6 uploads a day are wanted (an upload costs 1,600 of 10,000 units).
+- U4. Create a YouTube Data API key (for reading the channel's uploads) and a Telegram bot token + chat id.
+- U5. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the worker's `backend/.env` (today only the API has them).
 
-### 2. Whisper on the GPU
+### Phase A1: YouTube token refresh [DONE]
+- `services/youtube.py::_get_valid_token`: if the stored expiry is near, call Google's token endpoint
+  with the refresh token, save the new access token and expiry (encrypted), return it.
+- `routes/auth.py::google_callback` never saves `expires_in` today, so `yt_token_expiry` is always empty;
+  save it.
+- A revoked or missing refresh token fails the job with a clear message and raises an alert (A6).
+- Files: `services/youtube.py`, `routes/auth.py`. Tests mock Google's endpoint.
 
-**Today** — `services/transcription.py:15,28`:
+### Phase A2: Data model and settings [DONE]
+- New table `autopilot_settings` (single row): `enabled`, `dry_run`, `auto_approve`, `posts_per_day`,
+  `clips_per_video`, `run_times` (list of hours), `privacy` (private / unlisted / public), `last_tick_at`.
+- New table `autopilot_sources`: `youtube_video_id` (unique), `title`, `duration`, `status`
+  (picked / processing / done / skipped / failed), `source_video_id` (FK), `picked_at`, `reason`.
+- `PublishJob` gets nothing new; `youtube.py` reads `privacy` from settings instead of the hardcoded `public`.
+- Alembic migration after `b4e6d1a73c20`. The user applies it.
+- Files: `db/models.py`, `db/schemas.py`, `migrations/versions/`, `services/youtube.py`.
 
-```python
-WhisperModel("base.en", device="cpu", compute_type="int8")
-model.transcribe(audio_path, word_timestamps=True)
-```
+### Phase A3: Source picker [DONE]
+- New `services/autopilot.py`: read the channel's uploads (uploads playlist = `UU` + channel id minus
+  `UC`; `playlistItems.list` + `videos.list` with the API key; about 1 quota unit per call, no new OAuth scope).
+- Skip: ids already in `autopilot_sources`, videos under a minimum length, videos that are themselves
+  Shorts, private or live videos.
+- Pick the oldest unused first by default. Insert a row, create the `SourceVideo`
+  (`ownership_confirmed=True`, since it is the user's own channel), call `start_processing_pipeline(from_url=True)`.
+- Files: `services/autopilot.py`, `config.py` (`YOUTUBE_API_KEY`).
 
-CPU int8, greedy-less (default `beam_size=5`), no VAD, and decoding a full H.264 mp4
-through PyAV frame by frame.
+### Phase A4: Scheduler and dispatcher [DONE]
+- Celery beat on the PC as its own process (`celery -A app.workers.celery_app beat`), one task
+  `autopilot_tick_task` every few minutes. It is idempotent, so a missed or doubled tick is harmless.
+- Each tick: (1) stop if disabled; (2) pick a source if a run time has passed and the daily cap allows;
+  (3) the dispatcher: queue `SCHEDULED` publish jobs whose `scheduled_at` has passed, flipping them to
+  `QUEUED` with one conditional UPDATE so two ticks cannot dispatch the same job; (4) write `last_tick_at`.
+- Vercel Cron is NOT the scheduler: Hobby allows one run per day.
+- Files: `workers/celery_app.py` (beat schedule), `workers/tasks.py`, `services/autopilot.py`, `DEPLOY.md`.
 
-**Change:**
+### Phase A5: Auto-approve and publish gate [DONE]
+- When every clip of an autopilot video is rendered and captioned, the tick approves the best
+  `clips_per_video` and rejects the rest.
+- Checks before approving: render `done`, non-empty caption, duration 15-60 s, `storage_key` present, not
+  the same time window as an already-approved clip. A failed check skips the clip and records why.
+- Approved clips get `PublishJob`s spaced through the day (`scheduled_at`) within `posts_per_day`.
+- `dry_run`: everything runs except the upload; the job is marked with a "dry run" note and no YouTube call is made.
+- Files: `services/autopilot.py`, `routes/publish.py` (shared job creation), `workers/tasks.py`.
 
-- Device auto-detect: `ctranslate2.get_cuda_device_count() > 0` → `device="cuda"`,
-  `compute_type="float16"`; otherwise fall back to the current `cpu`/`int8`.
-- Extract audio first with ffmpeg — `-vn -ac 1 -ar 16000 -c:a pcm_s16le` — and hand
-  Whisper a small WAV instead of the mp4. Removes video decode from the hot path.
-- `beam_size=1` (greedy), `vad_filter=True` (skips silence entirely),
-  `condition_on_previous_text=False` (prevents the repetition loops that stall long runs).
-- Keep `word_timestamps=True` — the SRT builder in `renderer.py:_write_srt` needs it.
+### Phase A6: Alerts and dead-man's switch [DONE]
+- `services/alerts.py`: send a Telegram message (HTTP call; email as a possible later addition).
+- Alert on: final publish failure, token refresh failure, pipeline `FAILED`, daily cap reached,
+  tick errors.
+- The PC cannot report that it is itself off. The tick pings an external dead-man's-switch URL
+  (for example healthchecks.io); it alerts you when pings stop. Needs one env var, `HEALTHCHECK_URL`.
+- Files: `services/alerts.py`, `workers/tasks.py`, `config.py`.
 
-All knobs land in config so this is reversible without a code edit:
-`WHISPER_MODEL`, `WHISPER_DEVICE=auto`, `WHISPER_COMPUTE_TYPE=auto`, `WHISPER_BEAM_SIZE=1`,
-`WHISPER_VAD=true`.
+### Phase A7: Activity API and dashboard [DONE]
+- API: `GET /api/activity` (recent publish jobs with video title, clip caption, status, YouTube link,
+  error), `GET` and `PATCH /api/autopilot/settings`, `POST /api/autopilot/run-now`, and a kill switch
+  (`enabled=false`). The existing `POST /clips/publish-jobs/{id}/retry` is reused for failed posts.
+- UI: new "Activity" page and nav link: posted list, failures with Retry, upcoming queue, and the
+  settings (on/off, dry run, posts per day, times, privacy). Shows worker health from `last_tick_at`.
+- Files: `routes/autopilot.py` (new), `main.py`, `frontend/src/pages/Activity.tsx`, `App.tsx`, `api/index.ts`, `types/index.ts`.
 
-**Effect — measured**, 3m37s of speech, `base.en`, word timestamps on:
+### Phase A8: Tests, dry run, deploy notes [DONE]
+- Unit tests: picker skips used and short videos; daily cap; dispatcher cannot double-dispatch; token
+  refresh (mocked); approve gate; dry run makes no upload call; alerts fire on failure.
+- Real check, in this order: dry run for a day, then one live post as PRIVATE, then switch privacy.
+- `DEPLOY.md`: how to run beat, the new env vars, and the dead-man's-switch setup.
 
-| Configuration | Time |
-|---|---|
-| Before: CPU, float32, beam 5, no VAD | 24.58 s |
-| After, GPU unavailable: CPU, int8, beam 1, VAD | 14.96 s (1.6×) |
-| After: CUDA, float16, beam 1, VAD | **3.14 s (7.8×)** |
+### Automation risks
+- Duplicate uploads: if YouTube accepts an upload but the job then fails to save, a retry posts it twice.
+  Needs a check on the job's `platform_post_id` before retrying.
+- yt-dlp can be blocked or rate-limited even from a home IP when downloads are frequent.
+- When the PC is off, nothing runs and only the dead-man's switch tells you.
+- (Reduced in A5) Double upload: a job that already has a YouTube id is never uploaded again, and an upload that cannot be saved is not retried. A crash of the whole worker between YouTube accepting the file and the save can still double-post.
+- Clips are chosen by Gemini with no human review once auto-approve is on; the gate in A5 reduces but
+  does not remove bad posts. Keep privacy at private/unlisted until the output has been checked.
+- Gemini only reads about the first 12 minutes of a long transcript (known gap, not part of this track).
 
-Word counts stayed within 1% of each other (624 / 629 / 630), so the speedup is not
-coming from dropped audio. 6 GB VRAM is far more than `base.en` needs, so `small.en`
-becomes affordable later if you want better accuracy.
+## Known risks
+- Hinglish output may be Devanagari or Roman unpredictably. This cannot be fully fixed.
+- `medium` on the 6 GB GPU is slower than `base.en`. The measured number goes in `changes.md`.
+- Hindi word timestamps are less accurate, so subtitles may drift slightly.
+- The migration touches the production Neon database. It must be run by hand (`alembic upgrade head`)
+  after review. Vercel does not run migrations.
 
----
+## Launch checklist (what is left after A1-A8)
 
-### 3. NVENC instead of libx264
+Status key: [ ] not done, [x] done, [blocked] I tried and was not allowed, you must do it.
 
-**Today** — `renderer.py:53-55` and `:75-77`, duplicated across two near-identical methods:
+Code and docs
+- [x] Hindi support, caption language, editable subtitles, autopilot A1-A8 written and tested (296 backend tests, frontend type-checks).
+- [ ] Commit the work (nothing is committed yet; `youtube-setup-plan.md` shows as deleted from before this work and `.serena/` is untracked, leave both out).
+- [ ] Deploy to Vercel (the Vercel CLI is not installed on this PC; needs `ADMIN_PASSWORD`, `SECRET_KEY`, `TOKEN_ENCRYPTION_KEY` etc. as in DEPLOY.md).
 
-```
--c:v libx264 -preset fast -crf 23
-```
+Your database and PC (run by you, not by me)
+- [blocked] Apply the three new migrations to Neon: `cd backend`, activate the venv, `alembic upgrade head`. They only add things (`source_videos.language`, `clips.subtitles`, two autopilot tables, `publish_jobs.autopilot`); nothing is dropped or rewritten. Until this is done the deployed API fails on the new columns.
+- [blocked] Worker `backend/.env`: add `YOUTUBE_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `HEALTHCHECK_URL` (see `.env.example`). I did not read your `.env`, so I do not know which are already set.
+- [ ] Start the worker and, in a second terminal, `celery -A app.workers.celery_app beat --loglevel=info`.
 
-**Change:**
+Google (your account)
+- [ ] U1 Move the OAuth consent screen from Testing to Production.
+- [ ] U2 Pass the YouTube API compliance audit (until then every upload is forced private).
+- [ ] U3 Request a quota increase if more than about 6 uploads a day are wanted.
+- [ ] U4 Create the YouTube Data API key, the Telegram bot, and the healthchecks.io check.
 
-- Probe `h264_nvenc` once per process, cache the result.
-- Encode with `-c:v h264_nvenc -preset p4 -tune hq -rc vbr -cq 23 -b:v 0 -pix_fmt yuv420p`.
-- Add `-hwaccel cuda` for decode. Deliberately **not** `-hwaccel_output_format cuda`:
-  `subtitles`/`libass` is a CPU filter, so frames must come back to system memory —
-  letting ffmpeg do that copy implicitly keeps the filter chain unchanged and correct.
-- Fold `_render_no_captions` / `_render_with_captions` into one `_build_cmd()`; the only
-  difference between them is one `subtitles=` entry in `-vf`.
-- Fall back to the current libx264 command if the probe fails. `FFMPEG_ENCODER=auto|h264_nvenc|libx264`.
+Rollout (DEPLOY.md, in order)
+- [ ] Autopilot ON + Dry run ON + auto-approve ON, press Run now, watch rehearsals on the Activity page.
+- [ ] Dry run OFF, visibility Private, let one real post go out and open it on YouTube.
+- [ ] Only then Unlisted or Public.
 
-Unchanged: `-ss` stays *before* `-i` (already fast input seek), the scale+crop chain,
-AAC 128k, and `+faststart`.
+Not verified yet
+- [ ] A real Hindi video through Whisper `medium` and Gemini.
+- [ ] The UI in a browser (language selector, subtitle editor, Activity page).
+- [ ] Real YouTube, Telegram, healthchecks.io and Redis behaviour.
 
-**Effect — measured, and well below my estimate.** I predicted 3–8×; a 20 s clip
-actually renders in 2.79 s on NVENC vs 4.75 s on libx264 (**1.7×**), and 2.22 s vs 3.39 s
-(**1.5×**) with the surrounding I/O excluded. Breaking the 20 s render down: decode 0.35 s,
-encode with no filters 1.86 s, + crop 1.95 s, + subtitles 2.22 s — encoding dominates and
-the filters are nearly free, so there is little left for hardware offload to remove at this
-clip length. NVENC also produced a noticeably larger file at matched quality settings
-(16.3 MB vs 6.4 MB), which costs upload time to R2. Worth keeping, but it is a minor win,
-not a major one.
-
----
-
-### 4. Stop downloading 4K to render 1080×1920
-
-**Today** — `tasks.py:55`:
-
-```python
-"format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-```
-
-On a 4K source that fetches ~4–8× more bytes than the 1080×1920 output can use, then
-pays to decode them on every clip.
-
-**Change:**
-
-```python
-"format": (
-    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
-    "best[height<=1080][ext=mp4]/best[height<=1080]/best"
-),
-"concurrent_fragment_downloads": 8,
-"noprogress": True,
-```
-
-Height cap via `settings.MAX_SOURCE_HEIGHT` (default 1080).
-
-**Effect:** proportional cut in download bytes and in per-clip decode cost.
-`concurrent_fragment_downloads` alone is a large win on YouTube's fragmented formats.
-
----
-
-## Files touched
-
-| File | Change |
-|---|---|
-| `backend/app/services/media_cache.py` | **new** — local source cache |
-| `backend/app/services/transcription.py` | CUDA autodetect, WAV extraction, VAD, greedy |
-| `backend/app/services/renderer.py` | NVENC + unified `_build_cmd()` |
-| `backend/app/workers/tasks.py` | use cache, seed cache, yt-dlp format cap, stage timings |
-| `backend/app/core/config.py` | new settings, all defaulting to current behaviour or `auto` |
-| `backend/.env.example` | document the new vars |
-
-Untouched: frontend, DB models, migrations, API routes, Celery routing.
-
----
-
-## Verification
-
-1. `[STAGE] <name> took Ns` log line added around download / transcribe / select / render /
-   caption, so the before-after is measurable rather than felt.
-2. Re-run one previously-processed YouTube URL end to end; compare stage timings.
-3. Confirm the rendered mp4 still plays, is 1080×1920, and has burned-in captions.
-4. `pytest` — `tests/test_api/test_health.py` must stay green.
-
-**Status:** 1, 3 and 4 done — stage timings are in, ffprobe confirms 1080x1920 / h264 /
-20.000000 s / aac from both encoders and an extracted frame shows captions burned in at the
-correct clip-relative time, and `pytest` reports `2 passed`. Whisper CPU-vs-GPU is measured
-above. Step 2 (a full end-to-end re-run of a real YouTube URL) is yours to do — it needs a
-running worker, which is blocked on #1.
-
-## Rollback
-
-The repo is **not** under git, so there is no `git checkout` escape hatch. Every change is
-therefore gated behind a setting that restores today's behaviour without editing code:
-
-```
-WHISPER_DEVICE=cpu
-WHISPER_COMPUTE_TYPE=int8
-WHISPER_VAD=false
-FFMPEG_ENCODER=libx264
-MEDIA_CACHE_DIR=            # empty disables the cache, restores per-clip download
-MAX_SOURCE_HEIGHT=0         # 0 disables the cap
-```
-
-## Expected result
-
-Revised down from the first draft, on measurements rather than estimates. The honest
-ranking of what this buys:
-
-1. **Whisper actually running at all** (the cuBLAS fix) — on this machine that is the
-   difference between working and raising `RuntimeError`, not a percentage.
-2. **The source download cache** — a 5-clip job went from 6 full R2 downloads to 1. This
-   scales with source size and clip count and is the largest *structural* win.
-3. **Whisper on the GPU** — 7.8× on the transcription stage.
-4. **The 1080p cap** — proportional to how much bigger than 1080p the source was.
-5. **NVENC** — 1.5–1.7× per render, the smallest of the five.
-
-What this does *not* fix: the YouTube download itself, and the 5 serial Gemini calls.
-Those become the floor. I am deliberately not restating a wall-clock target for a full
-job, because I have not measured one end to end — the stage timings added in Verification
-will give you the real number on your next run.
-
-## Known limits
-
-- Consumer Ampere caps concurrent NVENC sessions (3 on older drivers). Sequential renders
-  are unaffected; it matters only if renders are parallelised later.
-- The 5 Gemini caption calls remain serial (~10–30 s total). Batching them into one
-  request is a further win, deliberately left out of this pass.
-- None of this addresses #1 (queue routing). If `transcribe_video_task` is on an
-  unconsumed queue, it will still never run — it will simply never run *faster*.
+Not built
+- Gemini only reads about the first 12 minutes of a long transcript; a separate YouTube title field; a GPU-cloud worker so it runs with the PC off; any quality check on auto-chosen clips beyond length, overlap, render and caption.

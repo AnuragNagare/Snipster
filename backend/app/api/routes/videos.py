@@ -12,6 +12,8 @@ from app.api.deps import get_session
 from app.db.models import SourceVideo, VideoStatus, Clip
 from app.core.config import settings
 from app.db.schemas import (
+    LanguageResponse,
+    LanguageUpdateRequest,
     UploadCompleteRequest,
     UploadUrlRequest,
     UploadUrlResponse,
@@ -209,4 +211,25 @@ async def get_video_status(
         status=video.status,
         error_message=video.error_message,
         clip_count=len(clips),
+        language=video.language,
     )
+
+
+@router.patch("/{video_id}/language", response_model=LanguageResponse)
+async def set_video_language(
+    video_id: uuid.UUID,
+    payload: LanguageUpdateRequest,
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Correct the language Whisper detected (it can be wrong, e.g. Hinglish).
+
+    It applies to captions generated and clips rendered from now on; existing captions and
+    rendered files are not touched. Regenerate or re-render a clip to pick it up.
+    """
+    video = await db.get(SourceVideo, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found.")
+    video.language = payload.language
+    logger.info(f"Language set to {payload.language} for video {video_id}")
+    return LanguageResponse(id=video.id, language=video.language)

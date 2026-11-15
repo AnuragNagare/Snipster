@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { getClipsForVideo } from "../api";
+import { getClipsForVideo, setVideoLanguage } from "../api";
 import { useAppStore } from "../store";
 import type { Clip } from "../types";
 import ClipCard from "../components/ClipCard";
+import { languageLabel } from "../utils/language";
+import { regenerateCaptionAndWait } from "../utils/regenerate";
 
 const POLL_MS = 3000;
 // A caption task can fail for good, so a clip may never settle. Stop asking
@@ -26,10 +28,13 @@ function allSettled(clips: Clip[]): boolean {
 
 export default function Review() {
   const { videoId } = useParams<{ videoId: string }>();
-  const { clips, setClips } = useAppStore();
+  const { clips, setClips, updateClip, showToast } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [polling, setPolling] = useState(true);
+  const [languageBusy, setLanguageBusy] = useState(false);
+  const [languageChanged, setLanguageChanged] = useState(false);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
 
   useEffect(() => {
     if (!videoId) return;
@@ -90,6 +95,37 @@ export default function Review() {
     );
   }
 
+  const currentLanguage = clips[0]?.language ?? "";
+
+  const handleLanguage = async (language: "en" | "hi") => {
+    if (!videoId || language === currentLanguage) return;
+    setLanguageBusy(true);
+    try {
+      const saved = await setVideoLanguage(videoId, language);
+      setClips(clips.map((c) => ({ ...c, language: saved })));
+      setLanguageChanged(true);
+      showToast(`Language set to ${languageLabel(saved)}.`, "success");
+    } catch (err: any) {
+      showToast(err?.response?.data?.detail || "Could not change the language.", "error");
+    } finally {
+      setLanguageBusy(false);
+    }
+  };
+
+  const handleRegenerateAll = async () => {
+    setRegeneratingAll(true);
+    const results = await Promise.allSettled(
+      clips.map((c) => regenerateCaptionAndWait(c, updateClip))
+    );
+    setRegeneratingAll(false);
+    const arrived = results.filter((r) => r.status === "fulfilled" && r.value).length;
+    if (arrived === clips.length) setLanguageChanged(false);
+    showToast(
+      `${arrived} of ${clips.length} captions regenerated.`,
+      arrived === clips.length ? "success" : "info"
+    );
+  };
+
   const rendered = clips.filter((c) => c.render_status === "done").length;
 
   return (
@@ -97,9 +133,48 @@ export default function Review() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white">Review Clips</h1>
         <p className="text-gray-400 mt-1">
-          {clips.length} candidate clip{clips.length !== 1 ? "s" : ""} generated.
+          {clips.length} candidate clip{clips.length !== 1 ? "s" : ""} generated
+          {languageLabel(clips[0]?.language) ? ` · ${languageLabel(clips[0]?.language)} video` : ""}.
           Approve to publish, or edit before approving.
         </p>
+
+        {clips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
+            <label className="flex items-center gap-2 text-gray-400">
+              Spoken language
+              <select
+                value={currentLanguage}
+                disabled={languageBusy || regeneratingAll}
+                onChange={(e) => handleLanguage(e.target.value as "en" | "hi")}
+                className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-sm"
+              >
+                {!["en", "hi"].includes(currentLanguage) && (
+                  <option value={currentLanguage} disabled>
+                    {languageLabel(currentLanguage) ?? "Unknown"}
+                  </option>
+                )}
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+              </select>
+            </label>
+            {languageChanged && (
+              <>
+                <button
+                  onClick={handleRegenerateAll}
+                  disabled={regeneratingAll}
+                  className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg"
+                >
+                  {regeneratingAll && <Loader2 size={12} className="animate-spin" />}
+                  {regeneratingAll ? "Regenerating…" : "Regenerate all captions"}
+                </button>
+                <span className="text-xs text-gray-500">
+                  Existing captions and rendered clips keep the old language until regenerated or
+                  re-rendered. This does not re-transcribe the audio.
+                </span>
+              </>
+            )}
+          </div>
+        )}
 
         {polling && (
           <p className="flex items-center gap-2 text-sm text-gray-500 mt-3">

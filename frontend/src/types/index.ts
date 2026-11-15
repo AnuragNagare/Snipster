@@ -37,6 +37,7 @@ export interface VideoStatusResponse {
   status: VideoStatus;
   error_message?: string;
   clip_count: number;
+  language?: string;
 }
 
 export interface Clip {
@@ -49,6 +50,7 @@ export interface Clip {
   caption?: string;
   hashtags?: string;
   approval_status: ApprovalStatus;
+  language?: string; // ISO code of the source video's spoken language, e.g. "en", "hi"
   preview_url?: string;
   created_at: string;
   updated_at: string;
@@ -74,7 +76,81 @@ export interface PublishJob {
   published_at?: string;
 }
 
+/** One burned-in subtitle line. Times are seconds from the start of the clip. */
+export interface SubtitleLine {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface SubtitlesResponse {
+  lines: SubtitleLine[];
+  /** false = built from the transcript, true = saved by the user */
+  customized: boolean;
+}
+
 export interface ConnectedAccounts {
   youtube_connected: boolean;
   youtube_channel_name?: string;
+}
+
+// ─── Autopilot / Activity ─────────────────────────────────────────────────────
+
+export interface AutopilotSettings {
+  enabled: boolean;
+  dry_run: boolean;
+  auto_approve: boolean;
+  posts_per_day: number;
+  clips_per_video: number;
+  run_times: string;
+  timezone: string;
+  privacy: "private" | "unlisted" | "public";
+  last_tick_at?: string;
+  /** null = the scheduler has never run */
+  seconds_since_tick: number | null;
+  tick_minutes: number;
+  posted_today: number;
+  scheduled_count: number;
+  youtube_connected: boolean;
+}
+
+export type AutopilotSettingsUpdate = Partial<
+  Pick<
+    AutopilotSettings,
+    "enabled" | "dry_run" | "auto_approve" | "posts_per_day" | "clips_per_video" | "run_times" | "timezone" | "privacy"
+  >
+>;
+
+export interface ActivityJob {
+  id: string;
+  clip_id: string;
+  status: PublishStatus;
+  caption?: string;
+  source_title?: string;
+  language?: string;
+  autopilot: boolean;
+  /** a rehearsal: nothing was uploaded */
+  dry_run: boolean;
+  post_url?: string;
+  error?: string;
+  /** the YouTube sign-in must be redone before a retry can work */
+  needs_reconnect: boolean;
+  scheduled_at?: string;
+  published_at?: string;
+  created_at?: string;
+}
+
+export interface ActivitySource {
+  id: string;
+  youtube_video_id: string;
+  title?: string;
+  status: "picked" | "processing" | "done" | "skipped" | "failed";
+  reason?: string;
+  picked_at?: string;
+  source_video_id?: string;
+}
+
+export interface ActivityResponse {
+  jobs: ActivityJob[];
+  sources: ActivitySource[];
 }

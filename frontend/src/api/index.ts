@@ -1,11 +1,16 @@
 import axios from "axios";
 import api from "./client";
 import type {
+  ActivityResponse,
+  AutopilotSettings,
+  AutopilotSettingsUpdate,
   Clip,
   ClipUpdateRequest,
   ConnectedAccounts,
   Platform,
   PublishJob,
+  SubtitleLine,
+  SubtitlesResponse,
   UploadUrlResponse,
   VideoStatusResponse,
   VideoUploadResponse,
@@ -71,11 +76,29 @@ export async function getVideoStatus(
   return res.data;
 }
 
+/** Correct the language Whisper detected. Affects captions and renders made afterwards. */
+export async function setVideoLanguage(videoId: string, language: "en" | "hi"): Promise<string> {
+  const res = await api.patch<{ id: string; language: string }>(`/videos/${videoId}/language`, {
+    language,
+  });
+  return res.data.language;
+}
+
 // ─── Clips ───────────────────────────────────────────────────────────────────
 
 export async function getClipsForVideo(videoId: string): Promise<Clip[]> {
   const res = await api.get<Clip[]>(`/clips/video/${videoId}`);
   return res.data;
+}
+
+export async function getClip(clipId: string): Promise<Clip> {
+  const res = await api.get<Clip>(`/clips/${clipId}`);
+  return res.data;
+}
+
+/** Queues a fresh caption + hashtags in the video's current language. The new text arrives later. */
+export async function regenerateCaption(clipId: string): Promise<void> {
+  await api.post(`/clips/${clipId}/regenerate-caption`);
 }
 
 export async function updateClip(
@@ -113,6 +136,20 @@ export async function getPreviewUrl(
 ): Promise<string> {
   const res = await api.get<{ url: string }>(`/clips/${clipId}/preview-url`);
   return res.data.url;
+}
+
+export async function getSubtitles(clipId: string): Promise<SubtitlesResponse> {
+  const res = await api.get<SubtitlesResponse>(`/clips/${clipId}/subtitles`);
+  return res.data;
+}
+
+/** Saves the lines. They are burned in at the next re-render, not before. */
+export async function updateSubtitles(
+  clipId: string,
+  lines: SubtitleLine[]
+): Promise<SubtitlesResponse> {
+  const res = await api.patch<SubtitlesResponse>(`/clips/${clipId}/subtitles`, { lines });
+  return res.data;
 }
 
 // ─── Publish ──────────────────────────────────────────────────────────────────
@@ -187,3 +224,27 @@ export async function getSystemInfo(): Promise<SystemInfo> {
   return res.data;
 }
 
+
+// ─── Autopilot ────────────────────────────────────────────────────────────────
+
+export async function getAutopilotSettings(): Promise<AutopilotSettings> {
+  const res = await api.get<AutopilotSettings>("/autopilot/settings");
+  return res.data;
+}
+
+export async function updateAutopilotSettings(
+  changes: AutopilotSettingsUpdate
+): Promise<AutopilotSettings> {
+  const res = await api.patch<AutopilotSettings>("/autopilot/settings", changes);
+  return res.data;
+}
+
+export async function runAutopilotNow(): Promise<string> {
+  const res = await api.post<{ message: string }>("/autopilot/run-now");
+  return res.data.message;
+}
+
+export async function getActivity(limit = 50): Promise<ActivityResponse> {
+  const res = await api.get<ActivityResponse>("/activity", { params: { limit } });
+  return res.data;
+}

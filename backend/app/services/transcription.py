@@ -163,12 +163,13 @@ class TranscriptionService:
             return None
         return wav_path
 
-    def transcribe(self, audio_path: str) -> list[dict[str, Any]]:
+    def transcribe(self, audio_path: str) -> tuple[list[dict[str, Any]], str]:
         """
         Transcribe an audio/video file.
 
-        Returns a list of word-level segments:
+        Returns (words, language). `words` is a list of word-level segments:
         [{"start": 0.0, "end": 1.2, "text": "Hello"}, ...]
+        `language` is the ISO code Whisper detected, e.g. "en" or "hi".
         """
         model = self._get_model()
         logger.info(f"[WHISPER] Transcribing {audio_path}")
@@ -184,6 +185,8 @@ class TranscriptionService:
                 # Long recordings otherwise drift into repetition loops.
                 "condition_on_previous_text": False,
             }
+            if settings.WHISPER_LANGUAGE.strip():
+                kwargs["language"] = settings.WHISPER_LANGUAGE.strip().lower()
             if settings.WHISPER_VAD:
                 kwargs["vad_filter"] = True
                 kwargs["vad_parameters"] = {"min_silence_duration_ms": 500}
@@ -207,7 +210,7 @@ class TranscriptionService:
                         })
 
             logger.info(f"[WHISPER] Transcribed {len(words)} words")
-            return words
+            return words, (info.language or "en")
         finally:
             if wav_path:
                 os.unlink(wav_path)

@@ -1,5 +1,6 @@
 """Login, plus the Google (YouTube) OAuth routes."""
 
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -131,7 +132,10 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
 
     user = await _get_or_create_user(db)
     user.yt_access_token = encrypt_token(access_token)
-    user.yt_refresh_token = encrypt_token(refresh_token) if refresh_token else None
+    # Record when it dies, so the worker can refresh it before an upload instead of failing.
+    user.yt_token_expiry = datetime.now(timezone.utc) + timedelta(seconds=int(tokens.get("expires_in", 3600)))
+    if refresh_token:  # keep the saved one if Google did not send a new one
+        user.yt_refresh_token = encrypt_token(refresh_token)
     user.yt_channel_id = channel_id
     user.yt_channel_name = channel_name
 
@@ -156,6 +160,7 @@ async def disconnect_youtube(db: AsyncSession = Depends(get_session)):
     user = await _get_or_create_user(db)
     user.yt_access_token = None
     user.yt_refresh_token = None
+    user.yt_token_expiry = None
     user.yt_channel_id = None
     user.yt_channel_name = None
     return {"message": "YouTube disconnected."}

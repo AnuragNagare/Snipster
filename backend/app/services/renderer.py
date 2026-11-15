@@ -17,6 +17,32 @@ _SUBTITLE_STYLE = (
     "FontSize=18,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2"
 )
 
+# Languages whose script the default subtitle font cannot draw (it shows empty boxes).
+_DEVANAGARI_LANGUAGES = {"hi", "mr", "ne", "sa"}
+
+
+def subtitle_style(language: str | None) -> str:
+    """The libass style string; adds a Devanagari-capable font for Hindi and related languages."""
+    if language and language.lower() in _DEVANAGARI_LANGUAGES and settings.SUBTITLE_FONT_DEVANAGARI.strip():
+        return f"FontName={settings.SUBTITLE_FONT_DEVANAGARI.strip()},{_SUBTITLE_STYLE}"
+    return _SUBTITLE_STYLE
+
+
+def default_subtitle_lines(transcript: list[dict], clip_start: float, clip_end: float) -> list[dict]:
+    """Subtitle lines for a clip built from the word-level transcript: ~4 words per line,
+    times relative to the clip start."""
+    words = [w for w in transcript if clip_start <= w["start"] <= clip_end]
+    lines: list[dict] = []
+    for i in range(0, len(words), 4):
+        group = words[i:i + 4]
+        lines.append({
+            "start": round(max(0, group[0]["start"] - clip_start), 3),
+            "end": round(max(0, group[-1]["end"] - clip_start), 3),
+            "text": " ".join(w["text"] for w in group),
+        })
+    return lines
+
+
 # Resolved once per worker process.
 _ENCODER: str | None = None
 
@@ -62,25 +88,32 @@ class RendererService:
         start: float,
         end: float,
         transcript: list[dict[str, Any]] | None = None,
+        language: str | None = None,
+        subtitles: list[dict[str, Any]] | None = None,
     ) -> None:
         """
         Render a clip from a source video:
         1. Trim to [start, end]
         2. Center-crop to 9:16 (1080x1920)
-        3. Burn in captions from transcript (if provided)
+        3. Burn in subtitles: the user's edited `subtitles` if given (an empty list means none),
+           otherwise lines built from the transcript (if provided)
         """
         duration = end - start
         logger.info(f"[RENDER] Rendering {start:.1f}s–{end:.1f}s ({duration:.1f}s)")
 
         srt_path = None
-        if transcript:
+        if subtitles is not None:
+            if subtitles:
+                srt_path = output_path.replace(".mp4", ".srt")
+                self._write_srt_lines(subtitles, srt_path)
+        elif transcript:
             srt_path = output_path.replace(".mp4", ".srt")
             self._write_srt(transcript, start, end, srt_path)
 
         try:
             encoder = _encoder()
             try:
-                self._run(self._build_cmd(source_path, output_path, start, end, srt_path, encoder))
+                self._run(self._build_cmd(source_path, output_path, start, end, srt_path, encoder, language))
             except RuntimeError:
                 if encoder != "h264_nvenc":
                     raise
@@ -88,7 +121,7 @@ class RendererService:
                 # session (driver mismatch, encoder sessions exhausted, ...).
                 logger.warning("[RENDER] NVENC failed — retrying with libx264.")
                 _disable_nvenc()
-                self._run(self._build_cmd(source_path, output_path, start, end, srt_path, "libx264"))
+                self._run(self._build_cmd(source_path, output_path, start, end, srt_path, "libx264", language))
         finally:
             if srt_path and os.path.exists(srt_path):
                 os.unlink(srt_path)
@@ -103,12 +136,13 @@ class RendererService:
         end: float,
         srt_path: str | None,
         encoder: str,
+        language: str | None = None,
     ) -> list[str]:
         vf = _CROP_9_16
         if srt_path:
             # ffmpeg's filter parser needs the Windows drive colon escaped.
             srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
-            vf += f",subtitles='{srt_escaped}':force_style='{_SUBTITLE_STYLE}'"
+            vf += f",subtitles='{srt_escaped}':force_style='{subtitle_style(language)}'"
 
         cmd = ["ffmpeg", "-y", "-loglevel", "error"]
 
@@ -146,23 +180,13 @@ class RendererService:
         clip_end: float,
         srt_path: str,
     ) -> None:
-        """Write an SRT subtitle file from word-level transcript, offset to clip start."""
-        # Filter words within this clip's range
-        words = [w for w in transcript if clip_start <= w["start"] <= clip_end]
+        """Write an SRT subtitle file from the word-level transcript, offset to clip start."""
+        self._write_srt_lines(default_subtitle_lines(transcript, clip_start, clip_end), srt_path)
 
-        # Group words into ~4-word subtitle lines
-        lines = []
-        chunk = []
-        for w in words:
-            chunk.append(w)
-            if len(chunk) >= 4:
-                lines.append(chunk)
-                chunk = []
-        if chunk:
-            lines.append(chunk)
+    def _write_srt_lines(self, lines: list[dict], srt_path: str) -> None:
+        """Write an SRT file from {"start", "end", "text"} lines (times relative to the clip)."""
 
         def fmt_time(seconds: float) -> str:
-            seconds -= clip_start  # offset to clip-relative time
             seconds = max(0, seconds)
             h = int(seconds // 3600)
             m = int((seconds % 3600) // 60)
@@ -171,11 +195,9 @@ class RendererService:
             return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
         with open(srt_path, "w", encoding="utf-8") as f:
-            for i, group in enumerate(lines, 1):
-                line_start = group[0]["start"]
-                line_end = group[-1]["end"]
-                text = " ".join(w["text"] for w in group)
-                f.write(f"{i}\n{fmt_time(line_start)} --> {fmt_time(line_end)}\n{text}\n\n")
+            for i, line in enumerate(lines, 1):
+                start, end = fmt_time(line["start"]), fmt_time(line["end"])
+                f.write(f"{i}\n{start} --> {end}\n{line['text']}\n\n")
 
     def _run(self, cmd: list[str]) -> None:
         logger.debug(f"[RENDER] Running: {' '.join(cmd)}")

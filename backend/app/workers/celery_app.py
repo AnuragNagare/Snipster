@@ -48,6 +48,13 @@ celery_app.conf.update(
     task_default_retry_delay=30,  # 30 seconds between retries
     task_max_retries=3,
     broker_connection_retry_on_startup=True,
+    # Autopilot: started by `celery -A app.workers.celery_app beat`, which runs as its own process.
+    beat_schedule={
+        "autopilot-tick": {
+            "task": "app.workers.tasks.autopilot_tick_task",
+            "schedule": max(1, settings.AUTOPILOT_TICK_MINUTES) * 60.0,
+        },
+    },
     broker_use_ssl=_REDIS_TLS,
     redis_backend_use_ssl=_REDIS_TLS,
     # The API (a serverless function) only publishes tasks. If Redis is unreachable

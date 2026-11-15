@@ -176,12 +176,13 @@ def transcribe_video_task(self, video_id: str):
         # Cached after this — the render tasks reuse the same local copy.
         source_path = media_cache.get_local_source(video_id, video.storage_key)
         try:
-            transcript_data = transcription_service.transcribe(source_path)
+            transcript_data, language = transcription_service.transcribe(source_path)
         finally:
             if not media_cache.enabled():
                 os.unlink(source_path)  # uncached path is a throwaway temp file
 
         video.transcript = json.dumps(transcript_data)
+        video.language = language
         video.status = VideoStatus.SELECTING_CLIPS
         db.commit()
 
@@ -216,7 +217,7 @@ def select_clips_task(self, video_id: str):
             raise ValueError("Video transcript not available.")
 
         transcript = json.loads(video.transcript)
-        segments = llm_service.select_clips(transcript)
+        segments = llm_service.select_clips(transcript, language=video.language)
 
         for seg in segments:
             clip = Clip(
@@ -285,6 +286,8 @@ def render_clip_task(self, clip_id: str):
                     start=clip.start_time,
                     end=clip.end_time,
                     transcript=transcript,
+                    language=video.language,
+                    subtitles=json.loads(clip.subtitles) if clip.subtitles is not None else None,
                 )
 
                 storage_key = f"clips/{clip_id}/clip.mp4"
@@ -335,6 +338,7 @@ def generate_caption_task(self, clip_id: str):
             start=clip.start_time,
             end=clip.end_time,
             reason=clip.llm_reason or "",
+            language=video.language,
         )
 
         clip.caption = result.get("caption", "")
@@ -352,44 +356,143 @@ def generate_caption_task(self, clip_id: str):
 
 # ─── Publishing ───────────────────────────────────────────────────────────────
 
+DRY_RUN_POST_ID = "dry-run"
+
+
+def _save_published(db, job, post_id: str, post_url) -> None:
+    """Record a finished post. Tried three times: the video is already on YouTube at this point."""
+    from app.db.models import PublishStatus
+
+    for attempt in range(3):
+        try:
+            job.status = PublishStatus.PUBLISHED
+            job.platform_post_id = post_id
+            job.platform_post_url = post_url
+            job.published_at = datetime.now(timezone.utc)
+            db.commit()
+            return
+        except Exception:
+            db.rollback()
+            if attempt == 2:
+                raise
+            time.sleep(2)
+
+
 @celery_app.task(bind=True, name="app.workers.tasks.publish_clip_task", max_retries=3)
 def publish_clip_task(self, job_id: str):
     """Publish a clip to YouTube."""
-    from app.db.models import Clip, Platform, PublishJob, PublishStatus, User
-    from app.services.youtube import youtube_service
+    from app.db.models import AutopilotSettings, Clip, Platform, PublishJob, PublishStatus, User
+    from app.services import alerts
+    from app.services.youtube import YouTubeAuthError, youtube_service
     from sqlalchemy import select
 
     logger.info(f"[PUBLISH] Starting job {job_id}")
     db = _get_sync_session()
+    job = None
+    uploaded = None  # the YouTube video id, once the upload has succeeded
+
+    def label() -> str:
+        caption = (job.clip.caption or "").strip() if job is not None and job.clip else ""
+        return f"\"{caption[:60]}\"" if caption else f"job {job_id}"
 
     try:
         job = db.get(PublishJob, uuid.UUID(job_id))
         if not job:
             raise ValueError(f"PublishJob not found: {job_id}")
 
+        # Already on YouTube (a retry after a failed save): never upload the same clip twice.
+        if job.platform_post_id and job.platform_post_id != DRY_RUN_POST_ID:
+            job.status = PublishStatus.PUBLISHED
+            db.commit()
+            logger.warning(f"[PUBLISH] Job {job_id} already has post {job.platform_post_id}, not uploading again")
+            return
+
+        # Once the autopilot settings row exists its privacy applies to every upload;
+        # before that, uploads stay public like they always were.
+        row = db.get(AutopilotSettings, 1)
+
+        # Dry run applies to autopilot's own posts only: a post you start yourself always uploads.
+        if job.autopilot and row is not None and row.dry_run:
+            _save_published(db, job, DRY_RUN_POST_ID, None)
+            logger.info(f"[PUBLISH] DRY RUN: job {job_id} ({label()}) would have been uploaded")
+            return
+
         job.status = PublishStatus.PUBLISHING
         db.commit()
 
         clip = job.clip
         user = db.query(User).first()
+        privacy = row.privacy if row else "public"
 
         if job.platform == Platform.YOUTUBE:
-            result = youtube_service.upload(clip=clip, user=user)
+            result = youtube_service.upload(clip=clip, user=user, privacy=privacy)
         else:
             raise ValueError(f"Unknown platform: {job.platform}")
 
-        job.status = PublishStatus.PUBLISHED
-        job.platform_post_id = result.get("post_id", "")
-        job.platform_post_url = result.get("post_url", "")
-        job.published_at = datetime.now(timezone.utc)
-        db.commit()
+        uploaded = result.get("post_id", "")
+        logger.info(f"[PUBLISH] Uploaded video {uploaded} for job {job_id}")
+        _save_published(db, job, uploaded, result.get("post_url", ""))
         logger.info(f"[PUBLISH] Success: job {job_id} → {job.platform_post_url}")
 
+    except YouTubeAuthError as exc:
+        # Reconnecting is the only fix, so do not retry.
+        logger.error(f"[PUBLISH] Sign-in problem, job {job_id} not retried: {exc}")
+        db.rollback()
+        if job is not None:
+            job.status = PublishStatus.FAILED
+            job.error_info = json.dumps({"error": str(exc), "retry": self.request.retries, "auth": True})
+            db.commit()
+        alerts.send(f"Could not post {label()}: {exc}", key="auth", cooldown=3600)
     except Exception as exc:
+        if uploaded:
+            # The video IS on YouTube; only saving it failed. Retrying would post it a second time.
+            url = f"https://www.youtube.com/shorts/{uploaded}"
+            logger.critical(f"[PUBLISH] Job {job_id} uploaded as {url} but could not be saved: {exc}")
+            try:
+                db.rollback()
+                job.status = PublishStatus.FAILED
+                job.error_info = json.dumps({"error": f"Uploaded as {url} but not saved. Do NOT retry.", "uploaded": uploaded})
+                db.commit()
+            except Exception:
+                pass
+            alerts.send(f"{label()} is on YouTube ({url}) but Snipster could not save that. Do not retry the job.")
+            return
         logger.error(f"[PUBLISH] Failed: job {job_id}: {exc}")
-        job.status = PublishStatus.FAILED
-        job.error_info = json.dumps({"error": str(exc), "retry": self.request.retries})
-        db.commit()
+        db.rollback()
+        if job is not None:
+            job.status = PublishStatus.FAILED
+            job.error_info = json.dumps({"error": str(exc), "retry": self.request.retries})
+            db.commit()
+        if self.request.retries >= self.max_retries:
+            alerts.send(f"Posting {label()} failed after {self.max_retries + 1} tries: {str(exc)[:300]}")
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+    finally:
+        db.close()
+
+
+# ─── Autopilot ────────────────────────────────────────────────────────────────
+
+@celery_app.task(name="app.workers.tasks.autopilot_tick_task", ignore_result=True)
+def autopilot_tick_task(force: bool = False):
+    """
+    Run by Celery beat every few minutes (and by "Run now" with force=True). Queues due scheduled
+    posts, approves finished videos' best clips and, when autopilot is on, starts the next video from
+    the user's channel. Pings the dead-man's switch after a healthy tick. Never raises: a failed tick
+    is logged, reported (at most once an hour) and the next one tries again.
+    """
+    from app.services import alerts, autopilot
+
+    db = _get_sync_session()
+    try:
+        summary = autopilot.run_tick(db, publish=publish_clip_task, force=force)
+        if summary["dispatched"] or summary["picked"] or summary["scheduled"]:
+            logger.info(f"[AUTOPILOT] Tick: {summary}")
+        else:
+            logger.debug(f"[AUTOPILOT] Tick: {summary}")
+        alerts.ping_healthcheck()  # only after a tick that ran to the end
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"[AUTOPILOT] Tick failed: {exc}")
+        alerts.send(f"Autopilot tick failed: {str(exc)[:300]}", key="tick-error", cooldown=3600)
     finally:
         db.close()

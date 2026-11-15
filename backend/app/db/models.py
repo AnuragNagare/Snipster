@@ -105,6 +105,7 @@ class SourceVideo(Base):
     )
     duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
     transcript: Mapped[str] = mapped_column(Text, nullable=True)  # JSON string
+    language: Mapped[str] = mapped_column(String(8), nullable=True)  # ISO code Whisper detected, e.g. "en", "hi"
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -142,6 +143,10 @@ class Clip(Base):
     caption: Mapped[str] = mapped_column(Text, nullable=True)
     hashtags: Mapped[str] = mapped_column(Text, nullable=True)
 
+    # User-edited burned-in subtitles: JSON list of {"start", "end", "text"}, times relative to the
+    # clip start. NULL = not edited, build them from the transcript. [] = user removed all subtitles.
+    subtitles: Mapped[str] = mapped_column(Text, nullable=True)
+
     # User decision
     approval_status: Mapped[ApprovalStatus] = mapped_column(
         Enum(ApprovalStatus), default=ApprovalStatus.PENDING
@@ -175,6 +180,9 @@ class PublishJob(Base):
     platform_post_url: Mapped[str] = mapped_column(String(1024), nullable=True)
     error_info: Mapped[str] = mapped_column(Text, nullable=True)  # JSON string
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Created by autopilot (not by a person clicking Publish). Only these jobs obey the kill switch
+    # and dry run, so a manual publish is never silently skipped.
+    autopilot: Mapped[bool] = mapped_column(Boolean, default=False)
 
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -183,3 +191,54 @@ class PublishJob(Base):
     )
 
     clip: Mapped["Clip"] = relationship(back_populates="publish_jobs")
+
+
+# ─── Autopilot ────────────────────────────────────────────────────────────────
+
+class AutopilotSource(Base):
+    """A video from the user's own channel that autopilot has picked. One row per YouTube video, ever."""
+    __tablename__ = "autopilot_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    youtube_video_id: Mapped[str] = mapped_column(String(32), unique=True)
+    title: Mapped[str] = mapped_column(String(512), nullable=True)
+    duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
+    # picked -> processing -> done, or skipped / failed. Plain strings (see AutopilotSourceStatus).
+    status: Mapped[str] = mapped_column(String(16), default="picked")
+    source_video_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_videos.id"), nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=True)  # why skipped / failed
+    picked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AutopilotSourceStatus:
+    PICKED = "picked"
+    PROCESSING = "processing"
+    DONE = "done"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    IN_FLIGHT = ("picked", "processing")
+
+
+class AutopilotSettings(Base):
+    """The one settings row for autopilot. Always id = 1. Safe defaults: off, dry run, private."""
+    __tablename__ = "autopilot_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_approve: Mapped[bool] = mapped_column(Boolean, default=False)
+    posts_per_day: Mapped[int] = mapped_column(Integer, default=3)
+    clips_per_video: Mapped[int] = mapped_column(Integer, default=2)
+    # Hours of the day (0-23) at which autopilot picks a new video, comma-separated, in `timezone`.
+    run_times: Mapped[str] = mapped_column(String(64), default="9,18")
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    # Applies to EVERY upload the app makes, manual or automatic, once this row exists.
+    privacy: Mapped[str] = mapped_column(String(16), default="private")
+
+    last_tick_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_slot: Mapped[str] = mapped_column(String(32), nullable=True)  # e.g. "2026-11-15T09"
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
 import { useCallback, useEffect, useState } from "react";
-import { Clapperboard, Settings as SettingsIcon, Home as HomeIcon, LogOut, Loader2 } from "lucide-react";
+import { Clapperboard, Settings as SettingsIcon, Home as HomeIcon, LogOut, Loader2, Activity as ActivityIcon } from "lucide-react";
+import Activity from "./pages/Activity";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Processing from "./pages/Processing";
@@ -60,6 +61,16 @@ function Navbar({ onLogout }: { onLogout?: () => void }) {
           <HomeIcon size={15} /> Home
         </NavLink>
         <NavLink
+          to="/activity"
+          className={({ isActive }) =>
+            `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              isActive ? "bg-gray-800 text-white" : "text-gray-400 hover:text-white"
+            }`
+          }
+        >
+          <ActivityIcon size={15} /> Activity
+        </NavLink>
+        <NavLink
           to="/settings"
           className={({ isActive }) =>
             `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
@@ -96,6 +107,7 @@ function AppShell({ onLogout }: { onLogout?: () => void }) {
           <Route path="/" element={<Home />} />
           <Route path="/processing/:videoId" element={<Processing />} />
           <Route path="/review/:videoId" element={<Review />} />
+          <Route path="/activity" element={<Activity />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </div>

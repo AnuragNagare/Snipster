@@ -11,6 +11,23 @@ from app.core.config import settings
 from app.core.logging import logger
 
 
+_LANGUAGE_NAMES = {"en": "English", "hi": "Hindi"}
+
+
+def _language_rule(language: str | None) -> str:
+    """The prompt line telling Gemini which language to write in (empty when unknown)."""
+    if not language:
+        return ""
+    name = _LANGUAGE_NAMES.get(language.lower(), language)
+    if language.lower() == "hi":
+        return (
+            "The video is in Hindi. Write the caption in Hindi using Devanagari script. "
+            "Hashtags may be Hindi (Devanagari) or common English ones, whichever people actually search. "
+            "The JSON keys stay in English exactly as shown."
+        )
+    return f"The video is in {name}. Write the caption and hashtags in {name}. The JSON keys stay exactly as shown."
+
+
 class LLMService:
     _model = None
     _model_name = None
@@ -63,7 +80,7 @@ class LLMService:
         words = [w["text"] for w in transcript if start <= w["start"] <= end]
         return " ".join(words)
 
-    def select_clips(self, transcript: list[dict]) -> list[dict[str, Any]]:
+    def select_clips(self, transcript: list[dict], language: str | None = None) -> list[dict[str, Any]]:
         """
         Ask Gemini to identify 3–5 engaging clip segments from a transcript.
 
@@ -81,6 +98,9 @@ Each clip should:
 - Be engaging from the very first second
 - Be between 15 and 60 seconds long
 - Feature a clear point, insight, story, or emotional moment
+
+{_language_rule(language)}
+The "reason" field may be in English.
 
 Transcript (with timestamps):
 {ts_text}
@@ -117,6 +137,7 @@ Respond ONLY with a JSON array, no other text:
         start: float,
         end: float,
         reason: str,
+        language: str | None = None,
     ) -> dict[str, str]:
         """
         Generate an engaging caption + hashtags for a clip.
@@ -129,6 +150,7 @@ Respond ONLY with a JSON array, no other text:
 
 Clip content: {clip_text[:1000]}
 Why this clip was selected: {reason}
+{_language_rule(language)}
 
 Requirements:
 - Caption: 1-3 punchy sentences, hooks the viewer immediately, no emojis needed

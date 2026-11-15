@@ -92,6 +92,47 @@ When it starts it reports its GPU and encoder to Redis, which is what the CPU/GP
 Processing page shows. Until a worker has started at least once, that badge stays on
 "Detecting compute…".
 
+### Autopilot scheduler (optional)
+
+Autopilot picks videos from your own channel on a schedule, and also sends out posts you scheduled
+by hand. It needs a second process, the scheduler, next to the worker:
+
+```bash
+cd backend
+.venv\Scripts\activate
+celery -A app.workers.celery_app beat --loglevel=info
+```
+
+Also add to the worker's `backend/.env`: `YOUTUBE_API_KEY` (YouTube Data API v3 key), and
+`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (the same values as on Vercel; the worker now refreshes
+the YouTube sign-in itself). Run `alembic upgrade head` first: autopilot adds two tables.
+
+Autopilot is OFF and in dry-run until you change it on the **Activity** page, and uploads default
+to private. Scheduled posts can start a few minutes late while the worker is busy with a long
+transcription, because the worker handles one task at a time.
+
+**Alerts and "the PC is off" warnings** (worker `backend/.env`):
+
+| Variable | What it does |
+|---|---|
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram message when a post fails, a video fails, or autopilot cannot start. Create a bot with @BotFather, message it once, then open `https://api.telegram.org/bot<token>/getUpdates` to find your chat id. |
+| `HEALTHCHECK_URL` | Pinged after every healthy tick. Create a check at healthchecks.io (free), set period about 10 minutes and grace time of 1 hour or more, and point its notifications at your email or Telegram. When the PC is off the pings stop and *that service* tells you. The PC cannot report that it is off. |
+
+**Rolling it out safely** (do these in order; each step is reversible on the Activity page):
+
+1. `alembic upgrade head`, restart the worker, start the scheduler (`... beat`).
+2. Activity page: the "Scheduler seen" badge should turn green within a few minutes.
+3. Turn **Autopilot on** with **Dry run on** and **Approve clips automatically on**. Press **Run now**.
+   Watch it pick a video, process it and show its clips under "Coming up", then as "rehearsal".
+   Nothing is uploaded.
+4. Check the clips and captions look right. Then turn **Dry run off** with visibility **Private**.
+   Let one real post go out and open it on YouTube.
+5. Only then move visibility to Unlisted or Public.
+
+Switching Autopilot off stops it picking, approving and posting at once; posts it had already
+scheduled are held (not lost) and go out if you switch it back on. Posts you scheduled by hand are
+never held. Dry run only ever applies to autopilot's posts, never to one you start yourself.
+
 The PC has to be on and the worker running for videos to process. Videos you submit while it is
 off wait in the queue.
 

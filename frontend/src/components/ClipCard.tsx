@@ -6,11 +6,14 @@ import {
   Play,
   Clock,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 
 import { approveClip, rejectClip, publishClip } from "../api";
 import { useAppStore } from "../store";
 import type { Clip } from "../types";
+import { languageLabel } from "../utils/language";
+import { regenerateCaptionAndWait } from "../utils/regenerate";
 import ClipEditor from "./ClipEditor";
 import PublishStatus from "./PublishStatus";
 
@@ -31,6 +34,22 @@ export default function ClipCard({ clip }: Props) {
   const [editing, setEditing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [showPublishJobs, setShowPublishJobs] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const arrived = await regenerateCaptionAndWait(clip, updateClip);
+      showToast(
+        arrived ? "New caption ready." : "Still waiting for the worker. Is it running?",
+        arrived ? "success" : "info"
+      );
+    } catch (err: any) {
+      showToast(err?.response?.data?.detail || "Could not regenerate the caption.", "error");
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   const handleApprove = async () => {
     try {
@@ -101,6 +120,13 @@ export default function ClipCard({ clip }: Props) {
           {duration(clip)}s
         </span>
 
+        {/* Spoken language badge */}
+        {languageLabel(clip.language) && (
+          <span className="absolute top-2 right-2 bg-black/70 text-gray-200 text-xs px-2 py-0.5 rounded">
+            {languageLabel(clip.language)}
+          </span>
+        )}
+
         {/* Approval status badge */}
         <span
           className={`absolute top-2 left-2 text-xs px-2 py-0.5 rounded font-medium ${statusColors[clip.approval_status]}`}
@@ -112,13 +138,25 @@ export default function ClipCard({ clip }: Props) {
       {/* Caption & Hashtags */}
       <div className="p-4 flex-1 space-y-2">
         {clip.caption ? (
-          <p className="text-sm text-gray-200 leading-snug">{clip.caption}</p>
+          <p lang={clip.language} className="text-sm text-gray-200 leading-snug">{clip.caption}</p>
         ) : (
           <p className="text-sm text-gray-500 italic">Caption generating…</p>
         )}
         {clip.hashtags && (
-          <p className="text-xs text-blue-400">{clip.hashtags}</p>
+          <p lang={clip.language} className="text-xs text-blue-400">{clip.hashtags}</p>
         )}
+        <button
+          onClick={handleRegenerate}
+          disabled={regenerating || !clip.caption}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white disabled:opacity-50"
+        >
+          {regenerating ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <RefreshCw size={12} />
+          )}
+          {regenerating ? "Regenerating…" : "Regenerate caption"}
+        </button>
         {clip.llm_reason && (
           <p className="text-xs text-gray-500 border-t border-gray-800 pt-2">
             💡 {clip.llm_reason}

@@ -53,11 +53,18 @@ class Settings(BaseSettings):
     CLIP_TARGET_COUNT: int = 5    # aim for this many clips per video
 
     # Whisper — "auto" picks CUDA + float16 when a GPU is visible, else CPU + int8
-    WHISPER_MODEL: str = "base.en"
+    # Multilingual model: base.en is English-only and cannot transcribe Hindi.
+    WHISPER_MODEL: str = "medium"
+    # "" = auto-detect the spoken language; or force one, e.g. "hi" or "en".
+    WHISPER_LANGUAGE: str = ""
     WHISPER_DEVICE: str = "auto"          # auto | cuda | cpu
     WHISPER_COMPUTE_TYPE: str = "auto"    # auto | float16 | int8_float16 | int8
     WHISPER_BEAM_SIZE: int = 1            # 1 = greedy decoding (fastest)
     WHISPER_VAD: bool = True              # skip silence instead of transcribing it
+
+    # Font for burned-in subtitles when the video is Hindi (or another Devanagari language).
+    # Must be installed on the worker PC. Nirmala UI ships with Windows; on Linux use "Noto Sans Devanagari".
+    SUBTITLE_FONT_DEVANAGARI: str = "Nirmala UI"
 
     # ffmpeg — "auto" uses h264_nvenc when the build supports it, else libx264
     FFMPEG_ENCODER: str = "auto"          # auto | h264_nvenc | libx264
@@ -70,6 +77,24 @@ class Settings(BaseSettings):
     # Cap the resolution yt-dlp fetches — output is 1080x1920, so anything
     # larger is wasted bandwidth and decode time. 0 disables the cap.
     MAX_SOURCE_HEIGHT: int = 1080
+
+    # ── Autopilot (worker side) ──────────────────────────────────────────────
+    # YouTube Data API key, used to list the connected channel's public uploads.
+    YOUTUBE_API_KEY: str = ""
+    # How often the scheduler wakes the autopilot tick, in minutes.
+    AUTOPILOT_TICK_MINUTES: int = 5
+    # Only pick videos within these lengths (seconds). The minimum also keeps Shorts out.
+    AUTOPILOT_MIN_DURATION: int = 180
+    AUTOPILOT_MAX_DURATION: int = 3600
+    # Pages of 50 uploads to read when looking for an unused video.
+    AUTOPILOT_MAX_PAGES: int = 10
+
+    # Alerts (worker side). Create a bot with @BotFather; the chat id is the number from
+    # https://api.telegram.org/bot<token>/getUpdates after you message the bot once.
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+    # Dead-man's switch: the worker requests this URL after every healthy tick (healthchecks.io etc.).
+    HEALTHCHECK_URL: str = ""
 
     # ── Derived database settings ────────────────────────────────────────────
     @property
