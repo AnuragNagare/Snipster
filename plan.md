@@ -164,8 +164,8 @@ Status key: [ ] not done, [x] done, [blocked] I tried and was not allowed, you m
 
 Code and docs
 - [x] Hindi support, caption language, editable subtitles, autopilot A1-A8 written and tested (296 backend tests, frontend type-checks).
-- [ ] Commit the work (nothing is committed yet; `youtube-setup-plan.md` shows as deleted from before this work and `.serena/` is untracked, leave both out).
-- [ ] Deploy to Vercel (the Vercel CLI is not installed on this PC; needs `ADMIN_PASSWORD`, `SECRET_KEY`, `TOKEN_ENCRYPTION_KEY` etc. as in DEPLOY.md).
+- [x] Committed and pushed to GitHub (main = 9e7cb9c).
+- [x] Deployed to Vercel: https://snipster-two.vercel.app (2026-11-16). Verified: health, login, database, Redis.
 
 Your database and PC (run by you, not by me)
 - [x] (applied 2026-11-16) Apply the migrations to Neon: `cd backend`, activate the venv, `alembic upgrade head`. They only add things (`source_videos.language`, `clips.subtitles`, two autopilot tables, `publish_jobs.autopilot`); nothing is dropped or rewritten. Until this is done the deployed API fails on the new columns.

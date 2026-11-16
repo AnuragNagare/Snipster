@@ -88,3 +88,15 @@ download (URL only) -> transcribe_video_task -> select_clips_task (Gemini picks 
 - Neon database (host `ep-steep-bar-b5f980pu-pooler.c-7.us-east-2...`, in a Neon account NOT connected to Claude) is at head `d91b3c6e8a47`. Existing data (1 video, 4 clips, 1 user) is intact. The earlier "host does not resolve" was a temporary DNS problem; ignore the older note saying the database is unreachable or that migrations are unapplied.
 - The database password was pasted in a chat message; the user should rotate it in the Neon console when convenient, then update `backend/.env` and Vercel.
 - Remaining: deploy to Vercel, worker `.env` keys, start worker + beat, Google steps, rollout, real Hindi test, browser check.
+
+## Latest (2026-11-16, later): GitHub updated, Vercel not created
+- GitHub `main` = `9e7cb9c` (all the work). Branch `feature/hindi-captions-autopilot` also pushed.
+- `backend/.env`: `SECRET_KEY` fixed; autopilot keys added empty (`YOUTUBE_API_KEY`, `TELEGRAM_*`, `HEALTHCHECK_URL`). `GOOGLE_REDIRECT_URI` and `FRONTEND_URL` still point to localhost: on Vercel they must be the deployed domain.
+- Vercel: no Snipster project exists. The Vercel connection in Claude cannot create projects (403). Vercel CLI is logged out. Next step is the user running `vercel login` (type `! vercel login` in the prompt), after which: `vercel link`, set env vars from `backend/.env` plus the new `ADMIN_PASSWORD`, `vercel --prod`.
+- Do not claim the app is deployed: it is not.
+
+## Latest (2026-11-16): LIVE on Vercel
+- Production: https://snipster-two.vercel.app (Vercel project `snipster`, team `anurags-projects-030904ac`). Deploy from this folder with `vercel deploy --prod --scope anurags-projects-030904ac` (CLI logged in as `anuragnagare77-2616`). The Claude-side Vercel connection cannot see this project; use the CLI.
+- Production env vars are set (names in changes.md). `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY` etc. on Vercel equal the values in `backend/.env`; they must stay identical to the worker's.
+- The deployed login password is stored only in Vercel (sensitive) and was shown once in chat.
+- Still open: (1) add `https://snipster-two.vercel.app/api/auth/google/callback` to the Google OAuth client's Authorized redirect URIs; (2) add this domain to the R2 bucket CORS (PUT, GET, HEAD) or browser uploads fail; (3) restart the worker (still reports `base.en`) and start `celery ... beat`; (4) fill `YOUTUBE_API_KEY`, `TELEGRAM_*`, `HEALTHCHECK_URL` in `backend/.env`; (5) consent screen to Production + API audit; (6) dry-run rollout from DEPLOY.md; (7) rotate the database password and the admin password (both appeared in chat).
