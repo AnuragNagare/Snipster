@@ -60,3 +60,4 @@ backend/logs/
 
 # Celery beat schedule file
 celerybeat-schedule*
+.vercel
