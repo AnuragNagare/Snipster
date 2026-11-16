@@ -77,3 +77,14 @@ download (URL only) -> transcribe_video_task -> select_clips_task (Gemini picks 
 - The assistant was not allowed to touch the production Neon database or read `backend/.env`. So: migrations `8c1f2a9d4e7b`, `b4e6d1a73c20`, `c7a2e9f15b83`, `d91b3c6e8a47` are unapplied (head is `d91b3c6e8a47`), and which worker `.env` keys are set is unknown.
 - Whoever continues: do not assume Neon is migrated. Ask the user to run `alembic upgrade head` (or to say it is OK to run it) and to confirm the env keys. The full checklist is at the end of `plan.md`.
 - Uncommitted noise to leave out of any commit: the deleted `youtube-setup-plan.md` (deleted before this work) and the untracked `.serena/`.
+
+## Latest: where launch is stuck
+- Branch `feature/hindi-captions-autopilot`, commit `59ffdf7`, local only.
+- The database URL in `backend/.env` points to a Neon host that no longer resolves, and no project in the connected Neon account matches it. Migrations are unapplied and the app cannot reach its database from this PC until `DATABASE_URL` is fixed.
+- Do NOT run migrations on the other Neon projects (Work trail, Quotation app, Policy pal, etc.): they are other apps' databases.
+- Next: the user finds or recreates the Snipster database and sets `DATABASE_URL` (in `backend/.env` and in Vercel), then `alembic upgrade head` creates everything from scratch (all 4 revisions), then deploy.
+
+## Latest (2026-11-16): database is migrated
+- Neon database (host `ep-steep-bar-b5f980pu-pooler.c-7.us-east-2...`, in a Neon account NOT connected to Claude) is at head `d91b3c6e8a47`. Existing data (1 video, 4 clips, 1 user) is intact. The earlier "host does not resolve" was a temporary DNS problem; ignore the older note saying the database is unreachable or that migrations are unapplied.
+- The database password was pasted in a chat message; the user should rotate it in the Neon console when convenient, then update `backend/.env` and Vercel.
+- Remaining: deploy to Vercel, worker `.env` keys, start worker + beat, Google steps, rollout, real Hindi test, browser check.

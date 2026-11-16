@@ -134,3 +134,17 @@ Migration SQL generated offline for Postgres and read; NOT run on Neon.
 - No application code changed. `plan.md` now ends with a launch checklist.
 - Tried a read-only check of Neon (`alembic current`, table row counts) and of which worker `.env` keys are set. The permission system refused it (it reaches your production database and reads secrets). Nothing was run against Neon and `.env` was not read. The migrations are therefore still NOT applied and the worker env is unchecked.
 - Not committed and not deployed: committing and deploying were not done in this step; they wait for your go-ahead.
+
+## 2026-11-15: commit done, migration blocked
+- Committed 44 files as `59ffdf7` on branch `feature/hindi-captions-autopilot` (no `.env`, caches or secrets in it; `youtube-setup-plan.md` deletion and `.serena/` left out). Not pushed.
+- `alembic upgrade head` was run against the database in `backend/.env` and FAILED before touching anything: the host `ep-steep-bar-b5f980pu-pooler.c-7.us-east-2.aws.neon.tech` does not resolve in DNS (`getaddrinfo failed`), while neon.tech and google.com do. So the migrations are still NOT applied.
+- Checked the connected Neon account (read-only project list). None of its 6 projects matches that host (region us-east-2 with proxy c-7): Work trail (us-east-2, proxy c-9), Fit path, Policy pal, Cafe table, Quotation app, Pursuit (all ap-southeast-1). So the Snipster database is not in this account, or it was deleted or recreated. Nothing was run on any of them: they belong to other apps.
+- Not deployed to Vercel: deploying against an unreachable database would give an API that fails on every call.
+
+## 2026-11-16: migrations applied to Neon
+- The earlier DNS failure was temporary on this PC. The host `ep-steep-bar-b5f980pu-pooler.c-7.us-east-2.aws.neon.tech` resolves (checked with the system resolver, 8.8.8.8 and 1.1.1.1). It is NOT in the Neon account connected to Claude (6 projects listed, none match), so it lives in another Neon account or organization.
+- Before: `alembic current` = `54b0d5b7980b`; tables alembic_version, clips, publish_jobs, source_videos, users; rows: source_videos 1, clips 4, users 1, publish_jobs 0.
+- Ran `alembic upgrade head` (URL given by the user, passed as the `DATABASE_URL` environment variable for that one command, not written to any file): 54b0d5b7980b -> 8c1f2a9d4e7b -> b4e6d1a73c20 -> c7a2e9f15b83 -> d91b3c6e8a47.
+- After: head is `d91b3c6e8a47`; new tables `autopilot_settings`, `autopilot_sources`; columns `source_videos.language`, `clips.subtitles`, `publish_jobs.autopilot` exist; row counts unchanged (1, 4, 1, 0).
+- Not touched: `backend/.env`, Vercel settings, the other Neon projects.
+- Still not done: deploy to Vercel (its environment variables, including `DATABASE_URL`, are secrets only the user should enter), worker `.env` keys, Google steps.

@@ -168,7 +168,7 @@ Code and docs
 - [ ] Deploy to Vercel (the Vercel CLI is not installed on this PC; needs `ADMIN_PASSWORD`, `SECRET_KEY`, `TOKEN_ENCRYPTION_KEY` etc. as in DEPLOY.md).
 
 Your database and PC (run by you, not by me)
-- [blocked] Apply the three new migrations to Neon: `cd backend`, activate the venv, `alembic upgrade head`. They only add things (`source_videos.language`, `clips.subtitles`, two autopilot tables, `publish_jobs.autopilot`); nothing is dropped or rewritten. Until this is done the deployed API fails on the new columns.
+- [x] (applied 2026-11-16) Apply the migrations to Neon: `cd backend`, activate the venv, `alembic upgrade head`. They only add things (`source_videos.language`, `clips.subtitles`, two autopilot tables, `publish_jobs.autopilot`); nothing is dropped or rewritten. Until this is done the deployed API fails on the new columns.
 - [blocked] Worker `backend/.env`: add `YOUTUBE_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `HEALTHCHECK_URL` (see `.env.example`). I did not read your `.env`, so I do not know which are already set.
 - [ ] Start the worker and, in a second terminal, `celery -A app.workers.celery_app beat --loglevel=info`.
 
