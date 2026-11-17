@@ -104,3 +104,7 @@ download (URL only) -> transcribe_video_task -> select_clips_task (Gemini picks 
 ## Dashboard tab (2026-11-17)
 - `GET /api/dashboard` + `pages/Dashboard.tsx` + nav tab. Shows only real Snipster posts (PUBLISHED, real YouTube id); stats from the Data API with `YOUTUBE_API_KEY` (key must be set on Vercel, and is still empty locally). Private videos return no numbers; dry-run posts are not listed. 5-minute in-memory cache per serverless instance.
 - Not deployed, not browser-checked. Backend tests: 320.
+
+## Latest (2026-11-17): waiting on DNS before the dry run
+- Worker `.env` now has `YOUTUBE_API_KEY` (valid). Still empty: `TELEGRAM_*`, `HEALTHCHECK_URL` (alerts and the PC-off warning will not work yet; not needed for the dry run).
+- Blocker: this PC's DNS cannot resolve `ep-steep-bar-b5f980pu-pooler.c-7.us-east-2.aws.neon.tech` (8.8.8.8 can). User must switch DNS to 8.8.8.8 / 1.1.1.1. Then: start worker + beat, turn Autopilot on with Dry run on, press Run now, watch the Activity page.

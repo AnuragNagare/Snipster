@@ -171,3 +171,8 @@ Checks: full backend suite 320 passed, 3 skipped (23 new). Frontend `npx tsc -b`
 - `frontend/src/pages/Dashboard.tsx` (new), nav tab "Dashboard" (between Home and Activity), route `/dashboard`, `getDashboard()` in `api/index.ts`, types in `types/index.ts`: four totals cards, per-post views/likes/comments with link, notes for posts without numbers / dry runs / errors, refresh button, auto-refresh every 60 s.
 - Config/docs: `YOUTUBE_API_KEY` is now also used by the API (set it on Vercel); `.env.example`, `config.py` comments and `DEPLOY.md` updated.
 - Known: the real `YOUTUBE_API_KEY` is still empty in `backend/.env`, so even after deploy the numbers stay empty until it is filled and also set on Vercel. While uploads are Private, YouTube gives no public numbers: use Unlisted or Public to see them.
+
+## 2026-11-17: YouTube API key added locally
+- `YOUTUBE_API_KEY` written to `backend/.env` (gitignored) from the value the user sent in chat. Tested with a 1-unit public `videos.list` call: HTTP 200, key works and the API is enabled. The key is not in any tracked file.
+- Dry run still NOT started: this PC's DNS server (10.219.222.114) cannot resolve the Neon host (8.8.8.8 can). Changing the PC's DNS was refused by the permission system, so the user must set DNS to 8.8.8.8 / 1.1.1.1 (or use another network) first.
+- The key appeared in chat: the user should consider restricting it to "YouTube Data API v3" in Google Cloud.
