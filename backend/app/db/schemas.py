@@ -222,3 +222,35 @@ class ActivitySource(BaseModel):
 class ActivityResponse(BaseModel):
     jobs: list[ActivityJob]
     sources: list[ActivitySource]
+
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+
+class DashboardPost(BaseModel):
+    id: uuid.UUID
+    video_id: str                  # the YouTube video id
+    url: str
+    caption: Optional[str] = None
+    source_title: Optional[str] = None
+    language: Optional[str] = None
+    autopilot: bool
+    published_at: Optional[datetime] = None
+    has_stats: bool                # False: YouTube returned nothing (private or deleted video, or no key)
+    views: Optional[int] = None
+    likes: Optional[int] = None    # None also when the owner hides the like count
+    comments: Optional[int] = None
+
+
+class DashboardTotals(BaseModel):
+    posts: int
+    with_stats: int                # posts whose numbers are included in the sums below
+    views: int
+    likes: int
+    comments: int
+
+
+class DashboardResponse(BaseModel):
+    posts: list[DashboardPost]
+    totals: DashboardTotals
+    stats_error: Optional[str] = None  # why the numbers are missing; the posts are still listed
+    rehearsals: int = 0                # dry-run posts left out of the list

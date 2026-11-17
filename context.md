@@ -100,3 +100,7 @@ download (URL only) -> transcribe_video_task -> select_clips_task (Gemini picks 
 - Production env vars are set (names in changes.md). `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY` etc. on Vercel equal the values in `backend/.env`; they must stay identical to the worker's.
 - The deployed login password is stored only in Vercel (sensitive) and was shown once in chat.
 - Still open: (1) add `https://snipster-two.vercel.app/api/auth/google/callback` to the Google OAuth client's Authorized redirect URIs; (2) add this domain to the R2 bucket CORS (PUT, GET, HEAD) or browser uploads fail; (3) restart the worker (still reports `base.en`) and start `celery ... beat`; (4) fill `YOUTUBE_API_KEY`, `TELEGRAM_*`, `HEALTHCHECK_URL` in `backend/.env`; (5) consent screen to Production + API audit; (6) dry-run rollout from DEPLOY.md; (7) rotate the database password and the admin password (both appeared in chat).
+
+## Dashboard tab (2026-11-17)
+- `GET /api/dashboard` + `pages/Dashboard.tsx` + nav tab. Shows only real Snipster posts (PUBLISHED, real YouTube id); stats from the Data API with `YOUTUBE_API_KEY` (key must be set on Vercel, and is still empty locally). Private videos return no numbers; dry-run posts are not listed. 5-minute in-memory cache per serverless instance.
+- Not deployed, not browser-checked. Backend tests: 320.

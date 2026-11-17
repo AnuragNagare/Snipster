@@ -154,3 +154,40 @@ export interface ActivityResponse {
   jobs: ActivityJob[];
   sources: ActivitySource[];
 }
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+export interface DashboardPost {
+  id: string;
+  video_id: string;
+  url: string;
+  caption?: string;
+  source_title?: string;
+  language?: string;
+  autopilot: boolean;
+  published_at?: string;
+  /** false: YouTube returned nothing for it (private or deleted video, or no key) */
+  has_stats: boolean;
+  views?: number;
+  /** also missing when the owner hides the like count */
+  likes?: number;
+  comments?: number;
+}
+
+export interface DashboardTotals {
+  posts: number;
+  /** posts whose numbers are included in the sums */
+  with_stats: number;
+  views: number;
+  likes: number;
+  comments: number;
+}
+
+export interface DashboardResponse {
+  posts: DashboardPost[];
+  totals: DashboardTotals;
+  /** why the numbers are missing; the posts are still listed */
+  stats_error?: string;
+  /** dry-run posts left out of the list */
+  rehearsals: number;
+}

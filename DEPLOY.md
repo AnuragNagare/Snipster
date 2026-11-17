@@ -68,6 +68,8 @@ Project → **Settings → Environment Variables**. Add these for **Production**
 | `GOOGLE_REDIRECT_URI` | `https://<your-domain>/api/auth/google/callback` |
 | `FRONTEND_URL` | `https://<your-domain>` |
 
+Optional on Vercel: `YOUTUBE_API_KEY`. Without it the **Dashboard** tab still lists your posts but shows no view counts.
+
 Not needed on Vercel: `GEMINI_API_KEY` and the `WHISPER_*` / `FFMPEG_*` settings. The API never
 uses them.
 

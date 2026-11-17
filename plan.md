@@ -190,3 +190,13 @@ Not verified yet
 
 Not built
 - Gemini only reads about the first 12 minutes of a long transcript; a separate YouTube title field; a GPU-cloud worker so it runs with the PC off; any quality check on auto-chosen clips beyond length, overlap, render and caption.
+
+## Dashboard tab (added 2026-11-17): DONE in code, not deployed
+Goal: a Dashboard tab listing the posts Snipster made on the channel with their views, likes and comments.
+Scope chosen (defaults, user did not specify): only Snipster's own posts (not the whole channel); no history chart.
+- [x] Backend: `services/youtube_stats.py` (YouTube Data API `videos.list`, batches of 50, 5-minute cache), `routes/dashboard.py` (`GET /api/dashboard`), schemas.
+- [x] Frontend: `pages/Dashboard.tsx`, nav tab, route `/dashboard`, API call and types.
+- [x] Tests: 23 new (stats service, route); mutation-checked.
+- [ ] Deploy to Vercel (after the user says so) and set `YOUTUBE_API_KEY` on Vercel (the numbers need it).
+- [ ] Look at it in a browser; see real numbers once a real unlisted/public post exists.
+Limits: private videos have no public numbers; dry-run posts are not listed; numbers lag. Not built: views-over-time chart (would need a daily snapshot table + a beat task), the whole channel's videos, watch time / retention (a different API with extra approval).

@@ -79,7 +79,8 @@ class Settings(BaseSettings):
     MAX_SOURCE_HEIGHT: int = 1080
 
     # ── Autopilot (worker side) ──────────────────────────────────────────────
-    # YouTube Data API key, used to list the connected channel's public uploads.
+    # YouTube Data API key [API + worker]. The worker uses it to list the channel's uploads;
+    # the API uses it for the Dashboard's view/like/comment numbers.
     YOUTUBE_API_KEY: str = ""
     # How often the scheduler wakes the autopilot tick, in minutes.
     AUTOPILOT_TICK_MINUTES: int = 5

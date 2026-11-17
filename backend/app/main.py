@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.deps import require_admin
-from app.api.routes import auth, autopilot, clips, publish, videos
+from app.api.routes import auth, autopilot, clips, dashboard, publish, videos
 from app.core import auth as auth_core
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
@@ -49,6 +49,7 @@ app.add_middleware(
 app.include_router(videos.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(clips.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(publish.router, prefix="/api", dependencies=[Depends(require_admin)])
+app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(autopilot.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(autopilot.activity_router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(auth.router, prefix="/api")

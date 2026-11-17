@@ -7,6 +7,7 @@ import type {
   Clip,
   ClipUpdateRequest,
   ConnectedAccounts,
+  DashboardResponse,
   Platform,
   PublishJob,
   SubtitleLine,
@@ -246,5 +247,12 @@ export async function runAutopilotNow(): Promise<string> {
 
 export async function getActivity(limit = 50): Promise<ActivityResponse> {
   const res = await api.get<ActivityResponse>("/activity", { params: { limit } });
+  return res.data;
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+export async function getDashboard(): Promise<DashboardResponse> {
+  const res = await api.get<DashboardResponse>("/dashboard");
   return res.data;
 }
