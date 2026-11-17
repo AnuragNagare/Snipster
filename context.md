@@ -21,3 +21,8 @@
 - Live settings: CC, English, post_times 19:45, Asia/Kolkata, dry run ON, auto-approve ON, private.
 - A wordless video was picked first and failed the new no-speech guard (`MIN_TRANSCRIPT_WORDS=60`); popularity ranking cannot see speech, so expect some picks to fail this way (max 3 retries a day, then the slot stays used).
 - Remember for the user: only the source dropdown auto-saves in the Activity card; "Save schedule" is needed for post times, timezone, posts/day, clips/video, run hours.
+
+## State at end of 2026-11-17
+- Dry run proven through scheduling on real data. Pending jobs: 2 autopilot posts at 19:45 IST on 2026-11-18 and 2026-11-19; with dry run ON they will be rehearsals (no upload).
+- Pace measured: ~16 min per video end to end; Gemini is the slow part. Expect about 2-3 videos per day on this PC.
+- Open: first real (private) upload not done; credit line unseen in a live post; decide auto-approve for CC mode (still ON); thin Hindi CC pool.

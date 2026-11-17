@@ -32,3 +32,10 @@ Checks: backend 379 passed, 3 skipped; frontend `tsc` clean (oxlint: same state-
 - Tests: 385 passed, 3 skipped (+11); mutation checks: guard removed, slot not freed, no daily retry cap each failed tests.
 - Second Run now: picked "The Last Normal Year" (vlogbrothers), a talking video; Whisper detected English at 99.95%. Result of the rest of the run: see below / next entry.
 - Not deployed: this fix is only on the local worker (the worker runs here, not on Vercel); the Vercel API and UI do not need it. Not yet committed to GitHub.
+
+## 2026-11-17 (night): first full Creative Commons dry run succeeded end to end
+- Pick: "The Last Normal Year" (vlogbrothers, 9:14 min, English 99.95%, CC). Timings on this PC (RTX 3050): download 20 s, Whisper `medium` 231 s (1,856 words), Gemini clip selection 113 s (4 clips), render about 28 s per clip (NVENC), Gemini caption 40-190 s per clip (the slowest step). About 16 minutes from pick to scheduled.
+- Result: clips 130.4-188.7 s etc.; 2 approved (47.9 s and 49.2 s), 2 rejected (57-58 s, further from the 40 s target). Two posts scheduled for 19:45 IST on Nov 18 and Nov 19 (14:15Z) as autopilot jobs; source marked done ("Scheduled 2 post(s). Left out: not among best 2."). An approved clip was downloaded and checked: H.264, 1080x1920, 47.9 s, English subtitles burned in at the bottom. The vertical crop is a centre crop of a landscape video (tight on the speaker).
+- Not yet seen: the actual dry-run publish (it fires at the scheduled time, about 15 hours later), the credit text in a real upload (dry run uploads nothing), a real YouTube upload.
+- A third pick ("Even Master Carpenters...", Top Wood Tips) started right after, probably from another Run now press or the freed run slot; likely wordless again, which the guard will fail.
+- Commit `8205cf0` (no-speech guard, slot retry) pushed to GitHub `main`.
