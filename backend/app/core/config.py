@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # YouTube Data API key [API + worker]. The worker uses it to list the channel's uploads;
     # the API uses it for the Dashboard's view/like/comment numbers.
     YOUTUBE_API_KEY: str = ""
+    # The channel autopilot picks videos from (starts with UC). Used when the YouTube sign-in did not
+    # save one (the upload permission cannot read channel info). Find it with the handle resolver in
+    # DEPLOY.md, or in YouTube Studio > Settings > Channel > Advanced settings.
+    YOUTUBE_CHANNEL_ID: str = ""
     # How often the scheduler wakes the autopilot tick, in minutes.
     AUTOPILOT_TICK_MINUTES: int = 5
     # Only pick videos within these lengths (seconds). The minimum also keeps Shorts out.

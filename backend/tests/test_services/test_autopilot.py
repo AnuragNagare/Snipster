@@ -194,8 +194,9 @@ def test_missing_setup_is_reported(sync_db, user, pipeline, monkeypatch):
     with pytest.raises(AutopilotConfigError, match="YOUTUBE_API_KEY"):
         ap.start_next_source(sync_db, user, fetch=lambda ch: [])
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "key")
-    with pytest.raises(AutopilotConfigError, match="not connected"):
-        ap.start_next_source(sync_db, m.User(), fetch=lambda ch: [])
+    monkeypatch.setattr(settings, "YOUTUBE_CHANNEL_ID", "")
+    with pytest.raises(AutopilotConfigError, match="channel is unknown"):
+        ap.start_next_source(sync_db, m.User(yt_channel_id=""), fetch=lambda ch: [])
     with pytest.raises(AutopilotConfigError):
         ap.start_next_source(sync_db, None, fetch=lambda ch: [])
 
@@ -438,3 +439,25 @@ def test_migration_chain_has_one_head_after_autopilot():
     assert script.get_heads() == ["d91b3c6e8a47"]
     assert script.get_revision("d91b3c6e8a47").down_revision == "c7a2e9f15b83"
     assert script.get_revision("c7a2e9f15b83").down_revision == "b4e6d1a73c20"
+
+
+# ─── Channel id fallback ─────────────────────────────────────────────────────
+
+def test_the_channel_from_settings_is_used_when_sign_in_saved_none(sync_db, pipeline, monkeypatch):
+    monkeypatch.setattr(settings, "YOUTUBE_CHANNEL_ID", " UCfromenv ")
+    user = m.User(yt_channel_id="")           # what the upload-only sign-in leaves behind
+    sync_db.add(user)
+    sync_db.commit()
+    seen = []
+    ap.start_next_source(sync_db, user, fetch=lambda ch: seen.append(ch) or [upload("v1")])
+    assert seen == ["UCfromenv"] and len(pipeline) == 1
+
+
+def test_a_saved_channel_wins_over_the_setting(sync_db, pipeline, monkeypatch):
+    monkeypatch.setattr(settings, "YOUTUBE_CHANNEL_ID", "UCfromenv")
+    user = m.User(yt_channel_id="UCsaved")
+    sync_db.add(user)
+    sync_db.commit()
+    seen = []
+    ap.start_next_source(sync_db, user, fetch=lambda ch: seen.append(ch) or [])
+    assert seen == ["UCsaved"]

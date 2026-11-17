@@ -108,3 +108,9 @@ download (URL only) -> transcribe_video_task -> select_clips_task (Gemini picks 
 ## Latest (2026-11-17): waiting on DNS before the dry run
 - Worker `.env` now has `YOUTUBE_API_KEY` (valid). Still empty: `TELEGRAM_*`, `HEALTHCHECK_URL` (alerts and the PC-off warning will not work yet; not needed for the dry run).
 - Blocker: this PC's DNS cannot resolve `ep-steep-bar-b5f980pu-pooler.c-7.us-east-2.aws.neon.tech` (8.8.8.8 can). User must switch DNS to 8.8.8.8 / 1.1.1.1. Then: start worker + beat, turn Autopilot on with Dry run on, press Run now, watch the Activity page.
+
+## Latest (2026-11-17, evening): dry run blocked on the channel id
+- Worker + beat are running on this PC (started by Claude, background). Autopilot is enabled (dry run, auto-approve, private) but cannot pick: no channel. Needs the user's own channel: give a handle (like @name), a channel URL or a `UC...` id; then set `YOUTUBE_CHANNEL_ID=` in `backend/.env`, restart the worker, press Run now.
+- `users.yt_channel_id` is '' because sign-in lacks the `youtube.readonly` scope. Adding that scope to `routes/auth.py` plus reconnecting would also fix it and let the Dashboard see private videos' numbers, but widens the permission and needs the consent screen updated; not done.
+- Do NOT use the channel of the video in the DB (`Raj Shamani Insights`, UCxNHw_mF6vHbnunoMtIwHWQ): not the user's.
+- Code change (channel fallback + tests) is uncommitted on branch `feature/dashboard-tab`.

@@ -193,11 +193,15 @@ def start_next_source(db: Session, user: User | None, *, fetch=fetch_uploads) ->
     """
     if not settings.YOUTUBE_API_KEY:
         raise AutopilotConfigError("YOUTUBE_API_KEY is not set in the worker's backend/.env.")
-    if user is None or not user.yt_channel_id:
-        raise AutopilotConfigError("YouTube is not connected. Connect it in Settings.")
+    channel_id = ((user.yt_channel_id if user else "") or settings.YOUTUBE_CHANNEL_ID or "").strip()
+    if not channel_id:
+        raise AutopilotConfigError(
+            "The YouTube channel is unknown. Set YOUTUBE_CHANNEL_ID in the worker's backend/.env "
+            "(or reconnect YouTube in Settings)."
+        )
 
     used = set(db.scalars(select(AutopilotSource.youtube_video_id)).all())
-    candidate = select_candidate(fetch(user.yt_channel_id), used)
+    candidate = select_candidate(fetch(channel_id), used)
     if candidate is None:
         logger.info("[AUTOPILOT] No unused eligible video on the channel")
         return None
@@ -209,7 +213,7 @@ def start_next_source(db: Session, user: User | None, *, fetch=fetch_uploads) ->
         status=AutopilotSourceStatus.PICKED,
     )
     video = SourceVideo(
-        user_id=user.id,
+        user_id=user.id if user else None,
         youtube_url=f"https://www.youtube.com/watch?v={candidate['id']}",
         ownership_confirmed=True,  # it comes from the connected user's own channel
         status=VideoStatus.PENDING,
