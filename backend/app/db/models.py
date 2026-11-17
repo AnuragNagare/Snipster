@@ -209,6 +209,13 @@ class AutopilotSource(Base):
     status: Mapped[str] = mapped_column(String(16), default="picked")
     source_video_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_videos.id"), nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=True)  # why skipped / failed
+    # Who made the source video and under which licence. Filled for Creative Commons picks, where the
+    # creator must be credited in every post's description. NULL for the user's own videos.
+    channel_id: Mapped[str] = mapped_column(String(64), nullable=True)
+    channel_title: Mapped[str] = mapped_column(String(256), nullable=True)
+    license: Mapped[str] = mapped_column(String(32), nullable=True)   # "creativeCommon"
+    views: Mapped[int] = mapped_column(Integer, nullable=True)        # at the time it was picked
+    likes: Mapped[int] = mapped_column(Integer, nullable=True)
     picked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -236,6 +243,12 @@ class AutopilotSettings(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     # Applies to EVERY upload the app makes, manual or automatic, once this row exists.
     privacy: Mapped[str] = mapped_column(String(16), default="private")
+    # Where videos come from: "own" = the user's channel, "creative_commons" = trending videos whose
+    # owners licensed them for reuse (credited in every post). Never any other creator's videos.
+    source_mode: Mapped[str] = mapped_column(String(24), default="own")
+    source_language: Mapped[str] = mapped_column(String(8), default="en")  # "en" or "hi", for Creative Commons search
+    # Fixed times of day to post at, in `timezone`: "19:45,12:15". Empty = spread posts evenly.
+    post_times: Mapped[str] = mapped_column(String(64), default="")
 
     last_tick_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_slot: Mapped[str] = mapped_column(String(32), nullable=True)  # e.g. "2026-11-15T09"

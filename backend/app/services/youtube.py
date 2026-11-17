@@ -112,7 +112,7 @@ class YouTubeService:
                 timeout=300.0,
             )
 
-    def upload(self, clip, user, privacy: str = "public") -> dict[str, str]:
+    def upload(self, clip, user, privacy: str = "public", credit: str | None = None) -> dict[str, str]:
         """
         Upload a rendered clip to YouTube as a Short.
         Returns: {"post_id": str, "post_url": str}
@@ -132,7 +132,10 @@ class YouTubeService:
             storage_service.download_to_file(clip.storage_key, tmp_path)
 
             title = clip.caption[:100] if clip.caption else "New Short"
-            description = f"{clip.caption or ''}\n\n{clip.hashtags or ''}\n\n#Shorts"
+            description = f"{clip.caption or ''}\n\n{clip.hashtags or ''}\n\n"
+            if credit:  # a Creative Commons source must be credited in the post
+                description += f"{credit}\n\n"
+            description += "#Shorts"
 
             metadata: dict[str, Any] = {
                 "snippet": {

@@ -235,3 +235,53 @@ async def test_every_autopilot_route_needs_the_login(client, monkeypatch):
                          ("POST", "/api/autopilot/run-now"), ("GET", "/api/activity")]:
         r = await client.request(method, path, json={} if method == "PATCH" else None)
         assert r.status_code == 401, path
+
+
+# ─── Source mode, language and post times ────────────────────────────────────
+
+async def test_new_settings_start_with_own_videos_english_and_no_fixed_times(client):
+    d = (await client.get("/api/autopilot/settings")).json()
+    assert (d["source_mode"], d["source_language"], d["post_times"]) == ("own", "en", "")
+
+
+async def test_source_mode_language_and_post_times_can_be_set(client):
+    d = (await client.patch("/api/autopilot/settings", json={
+        "source_mode": "creative_commons", "source_language": "hi", "post_times": " 19:45 , 12:15 ",
+        "timezone": "Asia/Kolkata"})).json()
+    assert d["source_mode"] == "creative_commons" and d["source_language"] == "hi"
+    assert d["post_times"] == "12:15,19:45"                  # cleaned and sorted
+    again = (await client.get("/api/autopilot/settings")).json()
+    assert again["post_times"] == "12:15,19:45"
+
+
+async def test_duplicate_post_times_are_merged(client):
+    d = (await client.patch("/api/autopilot/settings", json={"post_times": "19:45,19:45"})).json()
+    assert d["post_times"] == "19:45"
+
+
+async def test_post_times_can_be_cleared(client):
+    await client.patch("/api/autopilot/settings", json={"post_times": "19:45"})
+    d = (await client.patch("/api/autopilot/settings", json={"post_times": ""})).json()
+    assert d["post_times"] == ""
+
+
+@pytest.mark.parametrize("body", [
+    {"source_mode": "anyone"}, {"source_mode": "trending"}, {"source_language": "fr"},
+    {"post_times": "25:00"}, {"post_times": "19:45,abc"}, {"post_times": "7pm"},
+])
+async def test_invalid_source_and_time_settings_are_refused(client, body):
+    r = await client.patch("/api/autopilot/settings", json=body)
+    assert r.status_code == 422
+    d = (await client.get("/api/autopilot/settings")).json()
+    assert (d["source_mode"], d["source_language"], d["post_times"]) == ("own", "en", "")
+
+
+async def test_activity_shows_who_a_creative_commons_video_came_from(client, maker):
+    async with maker() as s:
+        s.add(m.AutopilotSource(youtube_video_id="ccvid", title="Big talk", status="processing",
+                                channel_title="Great Creator", license="creativeCommon", views=120000, likes=4500,
+                                picked_at=NOW))
+        await s.commit()
+    src = (await client.get("/api/activity")).json()["sources"][0]
+    assert src["channel_title"] == "Great Creator" and src["license"] == "creativeCommon"
+    assert (src["views"], src["likes"]) == (120000, 4500)

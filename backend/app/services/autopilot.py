@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -53,6 +53,7 @@ def get_settings_row(db: Session) -> AutopilotSettings:
         row = AutopilotSettings(
             id=1, enabled=False, dry_run=True, auto_approve=False, posts_per_day=3,
             clips_per_video=2, run_times="9,18", timezone="UTC", privacy="private",
+            source_mode="own", source_language="en", post_times="",
         )
         db.add(row)
         db.commit()
@@ -182,29 +183,146 @@ def select_candidate(uploads: list[dict], used_ids: set[str]) -> dict | None:
     return min(eligible, key=lambda u: u["published_at"])
 
 
+# ─── Creative Commons discovery ───────────────────────────────────────────────
+
+CC_LICENSE = "creativeCommon"
+SOURCE_MODES = ("own", "creative_commons")
+
+
+def parse_post_times(text: str | None) -> list[time]:
+    """'19:45, 12:15' -> [12:15, 19:45]. Anything that is not a valid HH:MM is ignored."""
+    found = set()
+    for part in (text or "").split(","):
+        m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", part)
+        if m and int(m.group(1)) <= 23 and int(m.group(2)) <= 59:
+            found.add(time(int(m.group(1)), int(m.group(2))))
+    return sorted(found)
+
+
+def fetch_cc_candidates(language: str, *, now: datetime | None = None) -> list[dict]:
+    """
+    Recent, popular videos whose owners licensed them for reuse (Creative Commons), with their numbers.
+
+    Two searches (4-20 min and over 20 min), 100 quota units each, then one cheap details call per 50
+    videos. The licence is read again from the video's own record: the search filter is only a hint.
+    """
+    now = now or datetime.now(timezone.utc)
+    after = (now - timedelta(days=settings.AUTOPILOT_CC_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    ids: list[str] = []
+    for bucket in ("medium", "long"):
+        params = {
+            "part": "id", "type": "video", "videoLicense": CC_LICENSE, "order": "viewCount",
+            "publishedAfter": after, "maxResults": 50, "videoDuration": bucket, "relevanceLanguage": language,
+        }
+        if language == "hi":
+            params["regionCode"] = "IN"
+        for item in _get("search", params).get("items", []):
+            vid = item.get("id", {}).get("videoId")
+            if vid and vid not in ids:
+                ids.append(vid)
+
+    found = []
+    for i in range(0, len(ids), 50):
+        data = _get("videos", {"part": "snippet,contentDetails,statistics,status", "id": ",".join(ids[i:i + 50]), "maxResults": 50})
+        for item in data.get("items", []):
+            snip, stats, status = item.get("snippet", {}), item.get("statistics", {}), item.get("status", {})
+            found.append({
+                "id": item["id"],
+                "title": snip.get("title", ""),
+                "published_at": snip.get("publishedAt", ""),
+                "duration": parse_iso_duration(item.get("contentDetails", {}).get("duration", "")),
+                "live": snip.get("liveBroadcastContent", "none") != "none",
+                "public": status.get("privacyStatus") == "public",
+                "license": status.get("license", ""),
+                "made_for_kids": bool(status.get("madeForKids", False)),
+                "channel_id": snip.get("channelId", ""),
+                "channel_title": snip.get("channelTitle", ""),
+                "category": str(snip.get("categoryId", "")),
+                "views": int(stats.get("viewCount", 0)),
+                "likes": int(stats.get("likeCount", 0)),
+                "language": (snip.get("defaultAudioLanguage") or snip.get("defaultLanguage") or "").lower(),
+            })
+    return found
+
+
+def cc_score(video: dict) -> int:
+    """Popularity: views, with each like counting as much as 50 views (likes show people really liked it)."""
+    return video.get("views", 0) + 50 * video.get("likes", 0)
+
+
+def select_cc_candidate(candidates: list[dict], used_ids: set[str], *, own_channel_id: str = "", language: str = "en") -> dict | None:
+    """
+    The most popular unused video that is really Creative Commons, public, not live, not made for kids,
+    within the length limits, popular enough, in the wanted language, and not from the user's own channel.
+    """
+    lo, hi = settings.AUTOPILOT_MIN_DURATION, settings.AUTOPILOT_MAX_DURATION
+    blocked = {c.strip() for c in settings.AUTOPILOT_CC_BLOCK_CATEGORIES.split(",") if c.strip()}
+    eligible = [
+        v for v in candidates
+        if v.get("license") == CC_LICENSE
+        and v.get("category", "") not in blocked
+        and v["id"] not in used_ids
+        and v.get("public")
+        and not v.get("live")
+        and not v.get("made_for_kids")
+        and lo <= v.get("duration", 0) <= hi
+        and v.get("views", 0) >= settings.AUTOPILOT_CC_MIN_VIEWS
+        and (not own_channel_id or v.get("channel_id") != own_channel_id)
+        and (not v.get("language") or v["language"].startswith(language))
+    ]
+    return max(eligible, key=cc_score) if eligible else None
+
+
+def credit_line(source: AutopilotSource | None) -> str | None:
+    """The credit every post made from a Creative Commons video must carry in its description."""
+    if source is None or source.license != CC_LICENSE:
+        return None
+    return (
+        f'Original video: "{source.title}" by {source.channel_title or "the creator"}\n'
+        f"https://www.youtube.com/watch?v={source.youtube_video_id}\n"
+        "Licensed under Creative Commons Attribution (CC BY). This Short is an edited clip of that video."
+    )
+
+
 # ─── Starting a source ───────────────────────────────────────────────────────
 
-def start_next_source(db: Session, user: User | None, *, fetch=fetch_uploads) -> AutopilotSource | None:
+def start_next_source(
+    db: Session, user: User | None, *, fetch=fetch_uploads, fetch_cc=fetch_cc_candidates
+) -> AutopilotSource | None:
     """
-    Pick the next unused upload and start the pipeline for it. Returns the new source row,
-    or None when the channel has nothing eligible left.
+    Pick the next video and start the pipeline for it. Returns the new source row, or None when
+    nothing eligible is left.
+
+    Depending on the settings the video comes from the user's own channel, or is the most popular
+    recent Creative Commons video (credited in every post). It is never any other creator's video.
 
     Raises AutopilotConfigError if autopilot is not set up.
     """
     if not settings.YOUTUBE_API_KEY:
         raise AutopilotConfigError("YOUTUBE_API_KEY is not set in the worker's backend/.env.")
-    channel_id = ((user.yt_channel_id if user else "") or settings.YOUTUBE_CHANNEL_ID or "").strip()
-    if not channel_id:
-        raise AutopilotConfigError(
-            "The YouTube channel is unknown. Set YOUTUBE_CHANNEL_ID in the worker's backend/.env "
-            "(or reconnect YouTube in Settings)."
-        )
 
+    row = get_settings_row(db)
+    mode = row.source_mode if row.source_mode in SOURCE_MODES else "own"
+    own_channel = ((user.yt_channel_id if user else "") or settings.YOUTUBE_CHANNEL_ID or "").strip()
     used = set(db.scalars(select(AutopilotSource.youtube_video_id)).all())
-    candidate = select_candidate(fetch(channel_id), used)
-    if candidate is None:
-        logger.info("[AUTOPILOT] No unused eligible video on the channel")
-        return None
+
+    if mode == "creative_commons":
+        language = row.source_language if row.source_language in ("en", "hi") else "en"
+        candidate = select_cc_candidate(fetch_cc(language), used, own_channel_id=own_channel, language=language)
+        if candidate is None:
+            logger.info("[AUTOPILOT] No unused eligible Creative Commons video")
+            return None
+    else:
+        if not own_channel:
+            raise AutopilotConfigError(
+                "The YouTube channel is unknown. Set YOUTUBE_CHANNEL_ID in the worker's backend/.env "
+                "(or reconnect YouTube in Settings)."
+            )
+        candidate = select_candidate(fetch(own_channel), used)
+        if candidate is None:
+            logger.info("[AUTOPILOT] No unused eligible video on the channel")
+            return None
 
     source = AutopilotSource(
         youtube_video_id=candidate["id"],
@@ -212,10 +330,17 @@ def start_next_source(db: Session, user: User | None, *, fetch=fetch_uploads) ->
         duration_seconds=candidate["duration"],
         status=AutopilotSourceStatus.PICKED,
     )
+    if mode == "creative_commons":
+        source.channel_id = candidate.get("channel_id")
+        source.channel_title = (candidate.get("channel_title") or "")[:256]
+        source.license = CC_LICENSE
+        source.views = candidate.get("views")
+        source.likes = candidate.get("likes")
     video = SourceVideo(
         user_id=user.id if user else None,
         youtube_url=f"https://www.youtube.com/watch?v={candidate['id']}",
-        ownership_confirmed=True,  # it comes from the connected user's own channel
+        # True only for the user's own channel. A Creative Commons video is licensed, not owned.
+        ownership_confirmed=(mode == "own"),
         status=VideoStatus.PENDING,
     )
     try:
@@ -243,8 +368,18 @@ def start_next_source(db: Session, user: User | None, *, fetch=fetch_uploads) ->
         db.commit()
         raise
 
-    logger.info(f"[AUTOPILOT] Picked {candidate['id']} ({candidate['title']!r}) -> video {video.id}")
+    logger.info(f"[AUTOPILOT] Picked {candidate['id']} ({candidate['title']!r}, {mode}) -> video {video.id}")
     return source
+
+
+def waiting_autopilot_posts(db: Session) -> int:
+    """Autopilot's own posts that are scheduled or on their way out."""
+    return db.scalar(
+        select(func.count()).select_from(PublishJob).where(
+            PublishJob.autopilot.is_(True),
+            PublishJob.status.in_([PublishStatus.SCHEDULED, PublishStatus.QUEUED, PublishStatus.PUBLISHING]),
+        )
+    ) or 0
 
 
 def in_flight(db: Session) -> bool:
@@ -383,12 +518,52 @@ def plan_post_times(
     return times
 
 
+SLOT_CLASH = timedelta(minutes=30)
+
+
+def plan_slot_times(
+    now: datetime,
+    tz: ZoneInfo,
+    count: int,
+    existing: list[datetime],
+    slots: list[time],
+    posts_per_day: int,
+) -> list[datetime]:
+    """
+    The next `count` free post times at the fixed daily `slots` (times of day in `tz`).
+
+    A slot is skipped when it is already past (or less than 5 minutes away), when another post is within
+    30 minutes of it, or when that calendar day already has `posts_per_day` posts (counting `existing`).
+    """
+    taken = list(existing)
+    chosen: list[datetime] = []
+    today = now.astimezone(tz).date()
+    for offset in range(120):
+        day = today + timedelta(days=offset)
+        for slot in slots:
+            if len(chosen) >= count:
+                return chosen
+            when = datetime.combine(day, slot, tzinfo=tz).astimezone(timezone.utc)
+            if when < now + timedelta(minutes=5):
+                continue
+            if sum(1 for t in taken if t.astimezone(tz).date() == day) >= posts_per_day:
+                break
+            if any(abs(t - when) < SLOT_CLASH for t in taken):
+                continue
+            chosen.append(when)
+            taken.append(when)
+    return chosen
+
+
 def _existing_post_times(db: Session, now: datetime) -> list[datetime]:
     """When non-failed posts are, or were, due: they count against the daily limit."""
     since = now - timedelta(days=3)
     rows = db.execute(
         select(PublishJob.published_at, PublishJob.scheduled_at, PublishJob.created_at)
-        .where(PublishJob.status != PublishStatus.FAILED, PublishJob.created_at >= since)
+        .where(
+            PublishJob.status != PublishStatus.FAILED,
+            or_(PublishJob.created_at >= since, PublishJob.scheduled_at >= now),
+        )
     ).all()
     return [_aware(p or s or c) for p, s, c in rows if (p or s or c)]
 
@@ -451,7 +626,12 @@ def finalize_ready_sources(db: Session, row: AutopilotSettings, now: datetime, n
         chosen = [c for c in chosen if c.id not in already]  # never queue a clip twice
         tz = tz_of(row)
         first_hour = (parse_run_hours(row.run_times) or [9])[0]
-        times = plan_post_times(now, tz, len(chosen), _existing_post_times(db, now), row.posts_per_day, first_hour)
+        existing_times = _existing_post_times(db, now)
+        slots = parse_post_times(row.post_times)
+        if slots:  # the user chose fixed times of day
+            times = plan_slot_times(now, tz, len(chosen), existing_times, slots, row.posts_per_day)
+        else:
+            times = plan_post_times(now, tz, len(chosen), existing_times, row.posts_per_day, first_hour)
 
         for clip, when in zip(chosen, times):
             clip.approval_status = ApprovalStatus.APPROVED
@@ -541,6 +721,8 @@ def run_tick(
             summary["note"] = "no run slot due"
         elif in_flight(db):
             summary["note"] = "previous video still in progress"
+        elif waiting_autopilot_posts(db) >= row.posts_per_day * 2:
+            summary["note"] = "enough posts are already waiting"
         else:
             try:
                 picked = start(db, db.query(User).first())

@@ -28,7 +28,7 @@ from app.db.schemas import (
     AutopilotSettingsUpdate,
     RunNowResponse,
 )
-from app.services.autopilot import parse_run_hours
+from app.services.autopilot import parse_post_times, parse_run_hours
 from app.workers.tasks import autopilot_tick_task
 
 router = APIRouter(prefix="/autopilot", tags=["autopilot"])
@@ -44,6 +44,7 @@ async def _get_row(db: AsyncSession) -> AutopilotSettings:
         row = AutopilotSettings(
             id=1, enabled=False, dry_run=True, auto_approve=False, posts_per_day=3,
             clips_per_video=2, run_times="9,18", timezone="UTC", privacy="private",
+            source_mode="own", source_language="en", post_times="",
         )
         db.add(row)
         await db.flush()
@@ -77,6 +78,8 @@ async def _settings_response(db: AsyncSession, row: AutopilotSettings) -> Autopi
         enabled=row.enabled, dry_run=row.dry_run, auto_approve=row.auto_approve,
         posts_per_day=row.posts_per_day, clips_per_video=row.clips_per_video,
         run_times=row.run_times, timezone=row.timezone, privacy=row.privacy,
+        source_mode=row.source_mode or "own", source_language=row.source_language or "en",
+        post_times=row.post_times or "",
         last_tick_at=row.last_tick_at,
         seconds_since_tick=int((now - _aware(row.last_tick_at)).total_seconds()) if row.last_tick_at else None,
         tick_minutes=settings.AUTOPILOT_TICK_MINUTES,
@@ -105,6 +108,13 @@ async def update_autopilot_settings(
         if not hours or len(hours) != len(set(given)):
             raise HTTPException(status_code=422, detail="Run times must be hours from 0 to 23, like 9,18.")
         changes["run_times"] = ",".join(str(h) for h in hours)
+    if "post_times" in changes:
+        text = changes["post_times"].strip()
+        given = [p.strip() for p in text.split(",") if p.strip()]
+        parsed = parse_post_times(text)
+        if text and (not parsed or len(parsed) != len(set(given))):
+            raise HTTPException(status_code=422, detail="Post times must look like 19:45 or 12:15,19:45 (24-hour clock).")
+        changes["post_times"] = ",".join(f"{t:%H:%M}" for t in parsed)
     if "timezone" in changes:
         try:
             ZoneInfo(changes["timezone"])

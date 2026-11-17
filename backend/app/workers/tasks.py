@@ -381,8 +381,9 @@ def _save_published(db, job, post_id: str, post_url) -> None:
 @celery_app.task(bind=True, name="app.workers.tasks.publish_clip_task", max_retries=3)
 def publish_clip_task(self, job_id: str):
     """Publish a clip to YouTube."""
-    from app.db.models import AutopilotSettings, Clip, Platform, PublishJob, PublishStatus, User
+    from app.db.models import AutopilotSettings, AutopilotSource, Clip, Platform, PublishJob, PublishStatus, User
     from app.services import alerts
+    from app.services.autopilot import credit_line
     from app.services.youtube import YouTubeAuthError, youtube_service
     from sqlalchemy import select
 
@@ -424,8 +425,12 @@ def publish_clip_task(self, job_id: str):
         user = db.query(User).first()
         privacy = row.privacy if row else "public"
 
+        # A Creative Commons source must be credited in the description of every post made from it.
+        source = db.query(AutopilotSource).filter(AutopilotSource.source_video_id == clip.source_video_id).first()
+        credit = credit_line(source)
+
         if job.platform == Platform.YOUTUBE:
-            result = youtube_service.upload(clip=clip, user=user, privacy=privacy)
+            result = youtube_service.upload(clip=clip, user=user, privacy=privacy, credit=credit)
         else:
             raise ValueError(f"Unknown platform: {job.platform}")
 

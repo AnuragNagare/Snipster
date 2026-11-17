@@ -76,6 +76,7 @@ function SettingsCard({
   const [timezone, setTimezone] = useState(settings.timezone);
   const [perDay, setPerDay] = useState(String(settings.posts_per_day));
   const [perVideo, setPerVideo] = useState(String(settings.clips_per_video));
+  const [postTimes, setPostTimes] = useState(settings.post_times);
 
   const save = async (changes: AutopilotSettingsUpdate) => {
     setBusy(true);
@@ -178,6 +179,41 @@ function SettingsCard({
         </label>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="text-sm text-white">
+          Where videos come from
+          <select
+            value={settings.source_mode}
+            disabled={busy}
+            onChange={(e) => save({ source_mode: e.target.value as AutopilotSettings["source_mode"] })}
+            className="mt-1 block w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm"
+          >
+            <option value="own">My own channel</option>
+            <option value="creative_commons">Trending Creative Commons videos</option>
+          </select>
+          <span className="block text-xs text-gray-500 mt-1">
+            {settings.source_mode === "creative_commons"
+              ? "Picks the most viewed and liked recent videos whose owners allow reuse. The creator is credited in every post. Some uploaders mislabel videos, so keep Dry run on and check the clips."
+              : "Clips long videos (3 to 60 minutes) from your own channel."}
+          </span>
+        </label>
+        {settings.source_mode === "creative_commons" && (
+          <label className="text-sm text-white">
+            Video language
+            <select
+              value={settings.source_language}
+              disabled={busy}
+              onChange={(e) => save({ source_language: e.target.value as AutopilotSettings["source_language"] })}
+              className="mt-1 block w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm"
+            >
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+            </select>
+            <span className="block text-xs text-gray-500 mt-1">Captions and subtitles follow the video's language.</span>
+          </label>
+        )}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-4">
         <label className="text-xs text-gray-400">
           Posts per day
@@ -205,6 +241,15 @@ function SettingsCard({
           />
         </label>
         <label className="text-xs text-gray-400">
+          Post at (times)
+          <input
+            value={postTimes}
+            onChange={(e) => setPostTimes(e.target.value)}
+            placeholder="19:45 or 12:15,19:45"
+            className="mt-1 block w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
+          />
+        </label>
+        <label className="text-xs text-gray-400">
           Timezone
           <input
             value={timezone}
@@ -223,6 +268,7 @@ function SettingsCard({
               posts_per_day: Number(perDay),
               clips_per_video: Number(perVideo),
               run_times: runTimes,
+              post_times: postTimes,
               timezone,
             });
             if (ok) showToast("Saved.", "success");
@@ -433,6 +479,13 @@ export default function Activity() {
                   {s.title || s.youtube_video_id}
                 </a>
                 <span className="text-xs text-gray-500">{when(s.picked_at)}</span>
+                {s.license === "creativeCommon" && (
+                  <span className="text-xs text-gray-500 basis-full">
+                    Creative Commons by {s.channel_title || "the creator"}
+                    {s.views !== undefined && s.views !== null ? ` · ${s.views.toLocaleString()} views` : ""}
+                    {s.likes !== undefined && s.likes !== null ? ` · ${s.likes.toLocaleString()} likes` : ""}
+                  </span>
+                )}
                 {s.reason && <span className="text-xs text-gray-500 basis-full">{s.reason}</span>}
               </li>
             ))}

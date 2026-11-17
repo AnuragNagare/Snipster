@@ -168,6 +168,9 @@ class AutopilotSettingsResponse(BaseModel):
     run_times: str
     timezone: str
     privacy: str
+    source_mode: str          # "own" or "creative_commons"
+    source_language: str      # "en" or "hi"
+    post_times: str           # "19:45,12:15" in `timezone`; empty = spread posts evenly
     last_tick_at: Optional[datetime] = None
     seconds_since_tick: Optional[int] = None  # None = the scheduler has never run
     tick_minutes: int
@@ -186,6 +189,9 @@ class AutopilotSettingsUpdate(BaseModel):
     run_times: Optional[str] = Field(default=None, max_length=64)
     timezone: Optional[str] = Field(default=None, max_length=64)
     privacy: Optional[Literal["private", "unlisted", "public"]] = None
+    source_mode: Optional[Literal["own", "creative_commons"]] = None
+    source_language: Optional[Literal["en", "hi"]] = None
+    post_times: Optional[str] = Field(default=None, max_length=64)  # "" clears it
 
 
 class RunNowResponse(BaseModel):
@@ -217,6 +223,10 @@ class ActivitySource(BaseModel):
     reason: Optional[str] = None
     picked_at: Optional[datetime] = None
     source_video_id: Optional[uuid.UUID] = None
+    channel_title: Optional[str] = None   # the creator, for Creative Commons picks
+    license: Optional[str] = None
+    views: Optional[int] = None
+    likes: Optional[int] = None
 
 
 class ActivityResponse(BaseModel):

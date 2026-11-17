@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     # Only pick videos within these lengths (seconds). The minimum also keeps Shorts out.
     AUTOPILOT_MIN_DURATION: int = 180
     AUTOPILOT_MAX_DURATION: int = 3600
+    # Creative Commons picker: look at videos published in the last N days, with at least this many
+    # views, ranked by views and likes. Each search costs 100 YouTube quota units.
+    AUTOPILOT_CC_DAYS: int = 30
+    AUTOPILOT_CC_MIN_VIEWS: int = 5000
+    # YouTube category ids never picked: a "Creative Commons" label on music, entertainment, film or TV
+    # content is often a mistake or hides licensed music. 1 Film, 10 Music, 24 Entertainment, 30 Movies,
+    # 31 Anime, 43 Shows, 44 Trailers.
+    AUTOPILOT_CC_BLOCK_CATEGORIES: str = "1,10,24,30,31,43,44"
     # Pages of 50 uploads to read when looking for an unused video.
     AUTOPILOT_MAX_PAGES: int = 10
 

@@ -105,6 +105,11 @@ export interface AutopilotSettings {
   run_times: string;
   timezone: string;
   privacy: "private" | "unlisted" | "public";
+  /** where videos come from: your own channel, or Creative Commons videos that are credited */
+  source_mode: "own" | "creative_commons";
+  source_language: "en" | "hi";
+  /** fixed times of day to post at, in `timezone`, like "12:15,19:45"; empty = spread evenly */
+  post_times: string;
   last_tick_at?: string;
   /** null = the scheduler has never run */
   seconds_since_tick: number | null;
@@ -117,7 +122,17 @@ export interface AutopilotSettings {
 export type AutopilotSettingsUpdate = Partial<
   Pick<
     AutopilotSettings,
-    "enabled" | "dry_run" | "auto_approve" | "posts_per_day" | "clips_per_video" | "run_times" | "timezone" | "privacy"
+    | "enabled"
+    | "dry_run"
+    | "auto_approve"
+    | "posts_per_day"
+    | "clips_per_video"
+    | "run_times"
+    | "timezone"
+    | "privacy"
+    | "source_mode"
+    | "source_language"
+    | "post_times"
   >
 >;
 
@@ -148,6 +163,11 @@ export interface ActivitySource {
   reason?: string;
   picked_at?: string;
   source_video_id?: string;
+  /** the creator, for Creative Commons picks */
+  channel_title?: string;
+  license?: string;
+  views?: number;
+  likes?: number;
 }
 
 export interface ActivityResponse {
