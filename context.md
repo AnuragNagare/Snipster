@@ -11,3 +11,8 @@
 - Migration head is `e5c2a8d41f96` (applied to Neon). Worker + beat running on the new code since 22:12.
 - Recommended before going live in CC mode: keep Dry run ON, turn Approve automatically OFF so clips wait on the Review page, check mislabelled or news content, then decide.
 - Quota: each pick costs ~200 units (2 searches) + ~1,600 per upload; default 10,000/day.
+
+## Deployed (2026-11-17, late)
+- Production https://snipster-two.vercel.app runs everything on GitHub `main` (`437b1cb`): Dashboard, CC picker, fixed times. `YOUTUBE_API_KEY` is now set on Vercel. README/DEPLOY/automation_plan and the `-captions` notes were deleted by the user on purpose; do not recreate them.
+- Live settings are unchanged (own channel, dry run, auto-approve ON, English, no fixed post times, UTC, private). Nothing has been picked or posted yet.
+- To start the agreed plan: in Activity set Where videos come from, Video language, Post at (e.g. 19:45), Timezone Asia/Kolkata, then Run now. Recommended first: Dry run ON, Approve automatically OFF so clips wait on the Review page.

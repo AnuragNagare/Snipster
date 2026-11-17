@@ -15,3 +15,10 @@ Checks: backend 379 passed, 3 skipped; frontend `tsc` clean (oxlint: same state-
 - Real check with the user's key (read-only, ~200 quota units each): English found 100 CC videos, 21 eligible; before the category filter the top pick was a K-pop show from a large label (so the filter was added), after it the pick was a carpentry video. Hindi: 100 found, only 4 eligible, all political/news recordings.
 - Worker and beat restarted on the new code; the live site (old API code) still works against the migrated database.
 - Not done: nothing deployed (live UI cannot set the new settings yet); no CC dry run yet; auto-approve for CC mode left to the user.
+
+## 2026-11-17: pushed and deployed
+- The user deleted README.md, DEPLOY.md, automation_plan.md, plan-captions.md, changes-captions.md, context-captions.md and youtube-setup-plan.md on purpose; that deletion was committed (`437b1cb`). History keeps them. `plan.md`, `changes.md` and `context.md` remain.
+- GitHub `main` = `437b1cb` (fast-forward from `3871724`; includes the Dashboard tab, Creative Commons picker, fixed post times, channel fallback). Branch `feature/dashboard-tab` also pushed.
+- Vercel: `YOUTUBE_API_KEY` was NOT among the project's variables although the user believed it was. Added it from `backend/.env` (sensitive). Deployed to production twice with the CLI; the second deployment (`snipster-6aew25092-...`, READY) has the key. Production address: https://snipster-two.vercel.app.
+- Verified on the live site: health 200; home page 200; `/api/dashboard` 200 with no stats_error (the key works there); `/api/autopilot/settings` returns `source_mode`, `source_language`, `post_times`; a bad post time is refused with 422; the built JavaScript contains the Dashboard tab, "Trending Creative Commons videos" and "Post at (times)". Not opened in a browser.
+- Live autopilot settings were not changed: enabled, dry run on, auto-approve on, source `own`, English, no fixed times, UTC, private.
