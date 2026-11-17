@@ -445,3 +445,110 @@ def test_migration_adds_the_new_columns_after_the_previous_head():
     script = ScriptDirectory.from_config(cfg)
     assert script.get_heads() == ["e5c2a8d41f96"]
     assert script.get_revision("e5c2a8d41f96").down_revision == "d91b3c6e8a47"
+
+
+# ─── Videos without speech ───────────────────────────────────────────────────
+
+def run_transcribe(monkeypatch, session_factory, video_id, words, language="en"):
+    from app.services import media_cache
+    from app.services.transcription import transcription_service
+    from app.workers import tasks
+
+    queued = []
+    monkeypatch.setattr(tasks, "_get_sync_session", session_factory)
+    monkeypatch.setattr(media_cache, "get_local_source", lambda vid, key: "x.mp4")
+    monkeypatch.setattr(media_cache, "enabled", lambda: True)
+    monkeypatch.setattr(transcription_service, "transcribe", lambda path: (words, language))
+    monkeypatch.setattr(tasks.select_clips_task, "delay", lambda vid: queued.append(vid))
+    result = tasks.transcribe_video_task.apply(args=[str(video_id)])
+    return result, queued
+
+
+def spoken(n):
+    return [{"start": float(i), "end": i + 0.4, "text": "word"} for i in range(n)]
+
+
+def new_video(db):
+    video = m.SourceVideo(ownership_confirmed=False, status=m.VideoStatus.PENDING, storage_key="k")
+    db.add(video)
+    db.commit()
+    return video
+
+
+def test_a_video_with_almost_no_speech_is_failed_not_clipped(sync_db, session_factory, monkeypatch):
+    video = new_video(sync_db)
+    result, queued = run_transcribe(monkeypatch, session_factory, video.id, spoken(0))
+    assert result.successful() and queued == []                   # finished: no retry, no clip selection
+    saved = session_factory().get(m.SourceVideo, video.id)
+    assert saved.status == m.VideoStatus.FAILED
+    assert saved.error_message.startswith("Almost no speech in this video (0 words found")
+
+
+def test_the_limit_is_exact(sync_db, session_factory, monkeypatch):
+    monkeypatch.setattr(settings, "MIN_TRANSCRIPT_WORDS", 60)
+    short, long_ = new_video(sync_db), new_video(sync_db)
+    _, q1 = run_transcribe(monkeypatch, session_factory, short.id, spoken(59))
+    _, q2 = run_transcribe(monkeypatch, session_factory, long_.id, spoken(60))
+    assert q1 == [] and q2 == [str(long_.id)]
+    assert session_factory().get(m.SourceVideo, long_.id).status == m.VideoStatus.SELECTING_CLIPS
+
+
+def test_a_video_with_speech_continues_as_before(sync_db, session_factory, monkeypatch):
+    video = new_video(sync_db)
+    _, queued = run_transcribe(monkeypatch, session_factory, video.id, spoken(500), language="hi")
+    saved = session_factory().get(m.SourceVideo, video.id)
+    assert queued == [str(video.id)] and saved.language == "hi" and saved.status == m.VideoStatus.SELECTING_CLIPS
+
+
+# ─── A failed video frees the run slot ───────────────────────────────────────
+
+def failed_pick(db, hours_ago=1):
+    video = m.SourceVideo(ownership_confirmed=False, status=m.VideoStatus.FAILED, error_message="Almost no speech")
+    db.add(video)
+    db.flush()
+    db.add(m.AutopilotSource(youtube_video_id=uuid.uuid4().hex[:11], title="Silent", status="processing",
+                             source_video_id=video.id, picked_at=NOW - timedelta(hours=hours_ago)))
+    db.commit()
+
+
+def test_a_failed_video_lets_the_same_run_slot_pick_the_next_candidate(sync_db):
+    row = set_mode(sync_db, enabled=True)
+    row.last_run_slot = "2026-11-17T09"
+    sync_db.commit()
+    failed_pick(sync_db)
+    picks = []
+    summary = ap.run_tick(sync_db, publish=Publish(), now=NOW, start=lambda db, u: picks.append(1) or None,
+                          notify=lambda *a, **k: True)
+    assert picks == [1]                                       # the freed slot was used straight away
+    assert summary["note"] == "no unused eligible video"
+
+
+def test_after_three_failures_a_day_the_slot_stays_used(sync_db):
+    row = set_mode(sync_db, enabled=True)
+    row.last_run_slot = "2026-11-17T09"
+    sync_db.commit()
+    for _ in range(4):
+        failed_pick(sync_db)
+    picks = []
+    ap.run_tick(sync_db, publish=Publish(), now=NOW, start=lambda db, u: picks.append(1) or None,
+                notify=lambda *a, **k: True)
+    assert picks == []
+    assert ap.get_settings_row(sync_db).last_run_slot == "2026-11-17T09"
+
+
+def test_clip_selection_also_refuses_an_empty_transcript(sync_db, session_factory, monkeypatch):
+    """A delivered-again task must not ask the AI to invent clips."""
+    import json as _json
+    from app.services.llm import llm_service
+    from app.workers import tasks
+
+    video = m.SourceVideo(ownership_confirmed=False, status=m.VideoStatus.SELECTING_CLIPS, transcript=_json.dumps([]))
+    sync_db.add(video)
+    sync_db.commit()
+    asked = []
+    monkeypatch.setattr(tasks, "_get_sync_session", session_factory)
+    monkeypatch.setattr(llm_service, "select_clips", lambda *a, **k: asked.append(1) or [])
+    assert tasks.select_clips_task.apply(args=[str(video.id)]).successful()
+    assert asked == []
+    saved = session_factory().get(m.SourceVideo, video.id)
+    assert saved.status == m.VideoStatus.FAILED and saved.error_message.startswith("Almost no speech")

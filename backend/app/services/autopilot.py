@@ -382,6 +382,19 @@ def waiting_autopilot_posts(db: Session) -> int:
     ) or 0
 
 
+MAX_RETRIES_PER_DAY = 3   # failed videos per day after which a run slot is no longer freed
+
+
+def failures_today(db: Session, row: AutopilotSettings, now: datetime) -> int:
+    """How many picked videos failed since local midnight (each retry costs YouTube quota)."""
+    midnight = now.astimezone(tz_of(row)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    return db.scalar(
+        select(func.count()).select_from(AutopilotSource).where(
+            AutopilotSource.status == AutopilotSourceStatus.FAILED, AutopilotSource.picked_at >= midnight
+        )
+    ) or 0
+
+
 def in_flight(db: Session) -> bool:
     return db.scalar(
         select(AutopilotSource.id).where(AutopilotSource.status.in_(AutopilotSourceStatus.IN_FLIGHT)).limit(1)
@@ -711,7 +724,9 @@ def run_tick(
     summary: dict = {"dispatched": 0, "picked": None, "scheduled": [], "note": None}
 
     summary["dispatched"] = dispatch_due_publish_jobs(db, now, publish, include_autopilot=row.enabled)
-    sync_source_statuses(db, now, notify)
+    failed = sync_source_statuses(db, now, notify)
+    if failed and row.last_run_slot and failures_today(db, row, now) <= MAX_RETRIES_PER_DAY:
+        row.last_run_slot = None  # this run slot produced nothing: let it pick the next candidate
 
     if row.enabled:
         summary["scheduled"] = finalize_ready_sources(db, row, now, notify)

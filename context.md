@@ -16,3 +16,8 @@
 - Production https://snipster-two.vercel.app runs everything on GitHub `main` (`437b1cb`): Dashboard, CC picker, fixed times. `YOUTUBE_API_KEY` is now set on Vercel. README/DEPLOY/automation_plan and the `-captions` notes were deleted by the user on purpose; do not recreate them.
 - Live settings are unchanged (own channel, dry run, auto-approve ON, English, no fixed post times, UTC, private). Nothing has been picked or posted yet.
 - To start the agreed plan: in Activity set Where videos come from, Video language, Post at (e.g. 19:45), Timezone Asia/Kolkata, then Run now. Recommended first: Dry run ON, Approve automatically OFF so clips wait on the Review page.
+
+## Latest (2026-11-17, ~22:45): CC dry run in progress
+- Live settings: CC, English, post_times 19:45, Asia/Kolkata, dry run ON, auto-approve ON, private.
+- A wordless video was picked first and failed the new no-speech guard (`MIN_TRANSCRIPT_WORDS=60`); popularity ranking cannot see speech, so expect some picks to fail this way (max 3 retries a day, then the slot stays used).
+- Remember for the user: only the source dropdown auto-saves in the Activity card; "Save schedule" is needed for post times, timezone, posts/day, clips/video, run hours.

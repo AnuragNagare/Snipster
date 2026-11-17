@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     CLIP_MAX_DURATION: int = 90   # seconds
     CLIP_TARGET_COUNT: int = 5    # aim for this many clips per video
 
+    # A video with fewer spoken words than this cannot be clipped: the AI would invent clips from an
+    # empty transcript. It is failed with a clear message instead (music-only, silent, wordless videos).
+    MIN_TRANSCRIPT_WORDS: int = 60
+
     # Whisper — "auto" picks CUDA + float16 when a GPU is visible, else CPU + int8
     # Multilingual model: base.en is English-only and cannot transcribe Hindi.
     WHISPER_MODEL: str = "medium"

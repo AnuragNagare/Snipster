@@ -181,6 +181,22 @@ def transcribe_video_task(self, video_id: str):
             if not media_cache.enabled():
                 os.unlink(source_path)  # uncached path is a throwaway temp file
 
+        from app.core.config import settings
+
+        if len(transcript_data) < settings.MIN_TRANSCRIPT_WORDS:
+            # Nothing to clip. Retrying cannot help, and asking the AI to pick clips from an empty
+            # transcript would make it invent them.
+            video.transcript = json.dumps(transcript_data)
+            video.language = language
+            video.status = VideoStatus.FAILED
+            video.error_message = (
+                f"Almost no speech in this video ({len(transcript_data)} words found, at least "
+                f"{settings.MIN_TRANSCRIPT_WORDS} needed), so there is nothing to clip."
+            )
+            db.commit()
+            logger.warning(f"[TRANSCRIBE] {video_id}: {video.error_message}")
+            return
+
         video.transcript = json.dumps(transcript_data)
         video.language = language
         video.status = VideoStatus.SELECTING_CLIPS
@@ -217,6 +233,21 @@ def select_clips_task(self, video_id: str):
             raise ValueError("Video transcript not available.")
 
         transcript = json.loads(video.transcript)
+
+        from app.core.config import settings
+
+        if len(transcript) < settings.MIN_TRANSCRIPT_WORDS:
+            # Also checked here, not only after transcription: a task that is delivered again must never
+            # ask the AI to pick clips from an (almost) empty transcript.
+            video.status = VideoStatus.FAILED
+            video.error_message = (
+                f"Almost no speech in this video ({len(transcript)} words found, at least "
+                f"{settings.MIN_TRANSCRIPT_WORDS} needed), so there is nothing to clip."
+            )
+            db.commit()
+            logger.warning(f"[SELECT_CLIPS] {video_id}: {video.error_message}")
+            return
+
         segments = llm_service.select_clips(transcript, language=video.language)
 
         for seg in segments:
