@@ -742,15 +742,16 @@ def retry_failed_jobs(db: Session, now: datetime, notify=alerts.send) -> int:
         if now < failed_at + RETRY_DELAYS[min(job.retry_count, len(RETRY_DELAYS) - 1)]:
             continue
 
+        job_id, tries = job.id, job.retry_count   # read now: the commit below expires the object
         claimed = db.execute(
             update(PublishJob)
-            .where(PublishJob.id == job.id, PublishJob.status == PublishStatus.FAILED, PublishJob.retry_count == job.retry_count)
-            .values(status=PublishStatus.SCHEDULED, retry_count=job.retry_count + 1, scheduled_at=job.scheduled_at or now)
+            .where(PublishJob.id == job_id, PublishJob.status == PublishStatus.FAILED, PublishJob.retry_count == tries)
+            .values(status=PublishStatus.SCHEDULED, retry_count=tries + 1, scheduled_at=job.scheduled_at or now)
         ).rowcount
         db.commit()
         if claimed == 1:
             requeued += 1
-            logger.info(f"[AUTOPILOT] Retrying failed post {job.id} (try {job.retry_count + 1})")
+            logger.info(f"[AUTOPILOT] Retrying failed post {job_id} (try {tries + 1})")
     return requeued
 
 

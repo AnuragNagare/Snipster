@@ -520,3 +520,10 @@ def test_a_post_that_was_retried_and_failed_again_meanwhile_is_not_requeued_on_t
     sync_db.expire_all()
     saved = reload(session_factory, job)
     assert saved.status == m.PublishStatus.FAILED and saved.retry_count == 1
+
+
+def test_the_retry_log_line_counts_the_try_correctly(sync_db, notes, caplog):
+    failed_job(sync_db, failed_ago=timedelta(hours=5), retry_count=2)      # after 2 tries the wait is 4 hours
+    with caplog.at_level(logging.INFO):
+        ap.retry_failed_jobs(sync_db, NOW, notes)
+    assert "(try 3)" in caplog.text and "(try 4)" not in caplog.text
