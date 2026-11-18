@@ -1,0 +1,5 @@
+# What the cloud publisher (.github/workflows/publisher.yml) installs.
+# The API's packages plus the synchronous database driver the publish task uses.
+# No Whisper, no ffmpeg, no yt-dlp: it only uploads clips that are already rendered.
+-r requirements.txt
+psycopg2-binary==2.9.12
