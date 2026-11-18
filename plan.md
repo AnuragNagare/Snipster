@@ -14,3 +14,11 @@ credited in every post. Reusing ordinary trending videos was declined: not the u
 - [ ] Deploy (UI and API on Vercel are still the old code).
 - [ ] Dry run with CC mode; user decides on auto-approve.
 Known limits: the CC pool is thin (English ~21 eligible/month, Hindi ~4, mostly news recordings); popularity ranking is not niche-aware (it picked carpentry and vlogs); mislabelled CC uploads exist; language per slot is global, not per slot.
+
+## Cloud worker without the laptop (investigated 2026-11-18)
+Goal: run the pipeline with the laptop off, ideally free.
+Free/cheap ideas considered: GitHub Actions (public repo, unlimited minutes, 2 CPUs / 7 GB, 6 h per job), Google Cloud Run Jobs (about 50 CPU-hours a month free, card needed), small paid VPS plus a hosted Whisper API, GPU on demand (RunPod/Modal).
+Test done: a manual GitHub Actions workflow tried to download 30 seconds of a Creative Commons video (`AvikGCepgNY`) with yt-dlp 2026.10.26 from a GitHub runner (Microsoft network, AS8075), in five YouTube client modes (default, tv, mweb, android_vr, web_safari). All five failed with "Sign in to confirm you're not a bot". Verdict: downloads from GitHub runners are BLOCKED without cookies or a proxy.
+Consequence: every data-centre route (GitHub, Google Cloud, any VPS) will most likely hit the same block for downloading other people's videos. Google Cloud Run was not tested.
+Ways around it, none free and reliable: (a) a residential proxy for yt-dlp (paid, per GB), (b) browser cookies from a YouTube account stored as a secret (fragile, expires, risks that account), (c) only process videos that are uploaded to storage directly (own videos), which needs no YouTube download and could run free on GitHub Actions, but then there is no trending/Creative Commons picking.
+Open decision for the user: which of (a), (b), (c), or keep the laptop.

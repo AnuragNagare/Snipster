@@ -26,3 +26,6 @@
 - Dry run proven through scheduling on real data. Pending jobs: 2 autopilot posts at 19:45 IST on 2026-11-18 and 2026-11-19; with dry run ON they will be rehearsals (no upload).
 - Pace measured: ~16 min per video end to end; Gemini is the slow part. Expect about 2-3 videos per day on this PC.
 - Open: first real (private) upload not done; credit line unseen in a live post; decide auto-approve for CC mode (still ON); thin Hindi CC pool.
+
+## 2026-11-18: cloud worker finding
+- yt-dlp downloads are blocked from GitHub-hosted runners (bot check, 5 client modes tried). Expect the same from other data-centre IPs. Options and trade-offs are at the end of plan.md ("Cloud worker without the laptop"). The laptop remains the only place downloads are known to work. Nothing about the cloud worker is built.

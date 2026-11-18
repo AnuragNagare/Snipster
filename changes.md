@@ -39,3 +39,7 @@ Checks: backend 379 passed, 3 skipped; frontend `tsc` clean (oxlint: same state-
 - Not yet seen: the actual dry-run publish (it fires at the scheduled time, about 15 hours later), the credit text in a real upload (dry run uploads nothing), a real YouTube upload.
 - A third pick ("Even Master Carpenters...", Top Wood Tips) started right after, probably from another Run now press or the freed run slot; likely wordless again, which the guard will fail.
 - Commit `8205cf0` (no-speech guard, slot retry) pushed to GitHub `main`.
+
+## 2026-11-18: GitHub Actions download test
+- Added `.github/workflows/download-test.yml` (manual, no secrets), pushed to `main`, ran it once (run 44343627752), then removed it. Result: all 5 client modes failed with "Sign in to confirm you're not a bot"; verdict "download BLOCKED from GitHub runners". The repo is public (unlimited Actions minutes); the token has `workflow` scope.
+- No application code changed.
