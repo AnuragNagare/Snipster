@@ -29,3 +29,9 @@
 
 ## 2026-11-18: cloud worker finding
 - yt-dlp downloads are blocked from GitHub-hosted runners (bot check, 5 client modes tried). Expect the same from other data-centre IPs. Options and trade-offs are at the end of plan.md ("Cloud worker without the laptop"). The laptop remains the only place downloads are known to work. Nothing about the cloud worker is built.
+
+## Auto-start on the laptop (2026-11-18): planned, not started
+- Plan lives at the end of `plan.md` (phases L1-L5). Approach: PowerShell launcher with a supervisor loop plus a Task Scheduler task "Snipster Worker" at log on, no `.exe`. Scripts will go in `backend/scripts/`, logs in `%LOCALAPPDATA%\Snipster\logs`.
+- Currently the worker and scheduler on the laptop are started by hand (background processes started by Claude, logs in the session scratchpad). They stop when the laptop shuts down.
+- Posting without the laptop (GitHub Actions publisher) is a separate, later plan; the user approved the idea but it is not built. Needs repository secrets.
+- Cloud processing is blocked by the YouTube download block on data-centre IPs (see the "Cloud worker without the laptop" section).

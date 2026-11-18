@@ -43,3 +43,7 @@ Checks: backend 379 passed, 3 skipped; frontend `tsc` clean (oxlint: same state-
 ## 2026-11-18: GitHub Actions download test
 - Added `.github/workflows/download-test.yml` (manual, no secrets), pushed to `main`, ran it once (run 44343627752), then removed it. Result: all 5 client modes failed with "Sign in to confirm you're not a bot"; verdict "download BLOCKED from GitHub runners". The repo is public (unlimited Actions minutes); the token has `workflow` scope.
 - No application code changed.
+
+## 2026-11-18: auto-start plan written
+- Planning only. `plan.md` got a new section "Auto-start on the laptop" with 5 phases (L1 launcher with a supervisor loop, L2 stop/status helpers, L3 Task Scheduler install and uninstall, L4 verification, L5 docs and power settings), plus limits. No application code, scripts or Windows settings were changed. Older sections of `plan.md` were kept as history.
+- Waiting for the user's go-ahead for L1-L5 (L3 changes Windows startup settings).

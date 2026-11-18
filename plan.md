@@ -22,3 +22,53 @@ Test done: a manual GitHub Actions workflow tried to download 30 seconds of a Cr
 Consequence: every data-centre route (GitHub, Google Cloud, any VPS) will most likely hit the same block for downloading other people's videos. Google Cloud Run was not tested.
 Ways around it, none free and reliable: (a) a residential proxy for yt-dlp (paid, per GB), (b) browser cookies from a YouTube account stored as a secret (fragile, expires, risks that account), (c) only process videos that are uploaded to storage directly (own videos), which needs no YouTube download and could run free on GitHub Actions, but then there is no trending/Creative Commons picking.
 Open decision for the user: which of (a), (b), (c), or keep the laptop.
+
+## Auto-start on the laptop (planned 2026-11-18): PLAN ONLY, no code written yet
+
+Goal: when the laptop is switched on and the user logs in, the worker and the scheduler start by themselves, run hidden in the background, restart if they crash, and process whatever is waiting in the queue. The user does nothing. No `.exe` is built: the worker carries Whisper and the GPU libraries, so a packaged exe would be huge and add nothing. A Windows Task Scheduler task plus a small launcher script does the job and can be removed with one command.
+
+What this does not do: it does not make processing run while the laptop is off, asleep or offline. Posting without the laptop is a separate plan (GitHub Actions, see the previous section).
+
+### Phases: 5
+
+#### Phase L1: Launcher with a supervisor loop
+- New `backend/scripts/start-snipster.ps1`. It runs hidden and does this in order:
+  1. Single-instance guard (a lock file or named mutex) so a second start does nothing.
+  2. Waits until the network works: keeps retrying until the Neon host and the Redis host resolve (the user's DNS has failed intermittently before), with a time limit and a log line for each retry.
+  3. Starts the worker (`celery -A app.workers.celery_app worker -P solo`) and the scheduler (`... beat`) from `backend/.venv`, with the working directory set to `backend/`.
+  4. Watches both. If one exits, it starts it again after a short pause that grows after repeated crashes (1 s, 5 s, 30 s, then every 60 s), and writes why it exited to the log.
+  5. Removes a stale `celerybeat-schedule` file before starting the scheduler (a bad one can stop it).
+- Logs go to `%LOCALAPPDATA%\Snipster\logs` (`worker.log`, `beat.log`, `launcher.log`), rotated at about 5 MB, 3 files kept. Logs never contain secrets (the worker log already hides the Redis password).
+- It reads `backend/.env` the way the worker does today and writes no secrets anywhere.
+
+#### Phase L2: Stop and status helpers
+- `backend/scripts/stop-snipster.ps1`: stops the launcher and the processes it started, and only those (found through the lock file, not by killing every Python process).
+- `backend/scripts/status-snipster.ps1`: shows whether the launcher, worker and scheduler are running, their start times, the last lines of each log, and the age of the last scheduler tick as the live site reports it.
+
+#### Phase L3: Register with Windows Task Scheduler
+- `backend/scripts/install-autostart.ps1` creates the task "Snipster Worker" for the current user:
+  - Trigger: at log on.
+  - Runs only while the user is logged on (no password stored; this also keeps access to the GPU session that CUDA and NVENC need).
+  - Allowed on battery, not stopped when switching to battery, no time limit, a second instance is ignored, restarts after failure.
+  - Hidden, no console window.
+- `backend/scripts/uninstall-autostart.ps1` removes the task and stops the processes.
+- The installer first stops any worker or scheduler the user (or Claude) started by hand, so there are no duplicates.
+- Needs the user's go-ahead before it is run, because it changes Windows startup settings.
+
+#### Phase L4: Verify
+- Run the task by hand and confirm worker and scheduler appear and the live Activity page shows "Scheduler seen".
+- Kill the worker on purpose and confirm the launcher restarts it and logs why.
+- Start the launcher twice and confirm the second start does nothing.
+- Start it with the network down, then bring the network back, and confirm it waits and then starts.
+- Put a video in the queue while no worker runs, start the launcher, and confirm the queue is processed.
+- The user does one real reboot test (Claude cannot reboot the laptop): restart, log in, wait two minutes, check the Activity page.
+
+#### Phase L5: Docs and power settings
+- Short how-to in these md files: install, remove, where the logs are, how to check status.
+- Power settings the user should set (not changed automatically unless the user says yes): lid close = do nothing and sleep = never while plugged in, otherwise the laptop sleeps and processing stops.
+
+### Limits and risks
+- At log on, not at boot: if Windows restarts after an update and waits at the sign-in screen, nothing runs until the user signs in. Auto sign-in would fix that but lowers security; the user decides.
+- Sleep or hibernate stops the work. After wake, the worker reconnects on its own (tested in L4 if possible), but jobs that were running may need to be retried.
+- The laptop must be online, have the NVIDIA driver, and keep the project folder where it is (`D:\Git hub project\Snipster`). Moving the folder breaks the task.
+- A failed video is retried by autopilot at most 3 times a day (existing rule).
