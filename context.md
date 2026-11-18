@@ -49,3 +49,12 @@
 - Repository secrets hold production credentials (8 names, see plan.md). If a key is rotated (database password, storage keys, Google secret, token encryption key), update the GitHub secret too (`gh secret set NAME --repo AnuragNagare/Snipster`), and Vercel and `backend/.env`.
 - When real uploads are switched on (dry run OFF), both the laptop and GitHub will upload; uploads stay private by default and YouTube forces private until the API audit passes.
 - Still open: Telegram/health-check alerts, a real reboot test, lid-close setting, first real private upload, scheduled cron run not yet observed.
+
+## Exact time, auto-retry, cloud alerts (2026-11-18, night)
+- Live on Vercel and GitHub `main`. Migration head `f3b7d92a1c58`, applied. Use `python scripts/migrate.py` (not `alembic upgrade head`) on a network that cannot resolve the database host.
+- Auto-retry is ON by default (15 min, 1 h, 4 h, 12 h, 12 h; max 5; post under 24 h old). It never retries sign-in problems, "uploaded but not saved", wrong settings. The cloud and laptop requeue with one conditional UPDATE: keep both conditions (status and try count).
+- "Exact time through YouTube" (`schedule_on_youtube`) is OFF and untested against real YouTube. It uploads up to 3 hours early as private with `publishAt`; switching autopilot off does not cancel an uploaded video.
+- Cloud publisher writes `autopilot_settings.last_cloud_run_at`; the laptop alerts after 3 hours of silence. `HEALTHCHECK_CLOUD_URL` (GitHub secret) is empty until the user creates a healthchecks.io check.
+- Public repo: logs are public, so never log captions, URLs of private things, or secrets. The test `test_publish_logs_never_contain_the_caption` guards this.
+- `keepalive.yml` commits monthly, so `git pull --rebase` before pushing if the bot committed.
+- Dry run is still ON; nothing has been uploaded to YouTube yet.
