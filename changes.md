@@ -58,3 +58,12 @@ Checks: backend 405 passed, 3 skipped (+20 for the DNS fallback); PowerShell scr
 - The laptop had been off: the log of the earlier hand-started worker ends at 23:45 on 2026-11-17, and the scheduler had last ticked about 22.5 hours before this work. The 4 scheduled autopilot posts were still waiting (the first, 19:45 IST on 2026-11-18, was already overdue). Dry run is still ON, so they will be rehearsals.
 - Windows startup settings changed: the scheduled task above. Remove with `scripts\uninstall-autostart.ps1`.
 - Not done: lid-close action could not be read by script (user to check); no real reboot test; Telegram and health-check alerts still unset, so nothing tells the user when the laptop is off.
+
+## 2026-11-18: cloud publisher (GitHub Actions)
+Checks: backend 421 passed, 3 skipped (+16 in `tests/test_services/test_cloud_publisher.py`, including checks on the workflow file and that the module pulls in no Whisper, yt-dlp, Gemini or ffmpeg libraries); mutation checks (kill switch ignored, failures not failing the run, claim guard removed) each failed a test.
+- New: `backend/app/cloud_publisher.py` (`InlinePublisher`, `run`, `main`), `backend/requirements-publisher.txt` (API packages + psycopg2-binary), `.github/workflows/publisher.yml` (cron every 15 minutes, manual trigger, no overlapping runs, read-only token permissions, only on this repository, 20-minute limit).
+- Secrets stored in the GitHub repository from `backend/.env` (names only: DATABASE_URL, STORAGE_ENDPOINT, STORAGE_BUCKET, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY, TOKEN_ENCRYPTION_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET). The workflow file is checked by a test to receive nothing else.
+- Real runs: run 44358253979 ("Nothing due"), run 44358490350 (the laptop's scheduler claimed the test post a second earlier; cloud correctly did nothing), run 44358688703 (laptop worker stopped: cloud published the test post as a rehearsal). The test posts were inserted on a REJECTED clip with no job, only after confirming dry run was ON, and deleted afterwards (3 real scheduled posts, Nov 19, 20, 21 at 14:15Z, untouched).
+- During the test the laptop worker was stopped and then restarted through the scheduled task.
+- Logs on GitHub are public (public repo). The script prints job ids and status only, no captions, URLs or secrets; GitHub also masks secret values.
+- Not done: Telegram secrets; no scheduled (cron) run has fired yet, only manual runs; no real YouTube upload through the cloud (dry run).

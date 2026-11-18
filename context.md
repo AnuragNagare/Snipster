@@ -42,3 +42,10 @@
 - PowerShell notes: scripts must stay ASCII (Windows PowerShell 5.1); never pipe a native command's output into `Select-Object -First 1` when its exit code matters; do not pass multi-line code through `python -c`.
 - Live state: autopilot ON, dry run ON, Creative Commons, English, post time 19:45 Asia/Kolkata, 4 posts scheduled (14:15Z on Nov 18, 19, 20, 21). The Nov 18 one was overdue when the worker came back, so a rehearsal should appear on the first tick.
 - Open: real reboot test by the user; lid-close setting; alerts (Telegram, health check) still unset; cloud posting without the laptop (GitHub Actions publisher) approved in principle, not built.
+
+## Cloud publisher is live (2026-11-18)
+- `.github/workflows/publisher.yml` + `backend/app/cloud_publisher.py`: every 15 minutes GitHub claims and publishes due SCHEDULED posts, so posting no longer needs the laptop. Same publish task as the laptop (dry run, kill switch, privacy, credit). Proven with the laptop worker stopped. Check runs with `gh run list --repo AnuragNagare/Snipster --workflow publisher.yml`.
+- Both sides may run at once: the atomic claim (SCHEDULED to QUEUED) means only one posts a given job. Do not add a second claim path or change that update to drop the status condition.
+- Repository secrets hold production credentials (8 names, see plan.md). If a key is rotated (database password, storage keys, Google secret, token encryption key), update the GitHub secret too (`gh secret set NAME --repo AnuragNagare/Snipster`), and Vercel and `backend/.env`.
+- When real uploads are switched on (dry run OFF), both the laptop and GitHub will upload; uploads stay private by default and YouTube forces private until the API audit passes.
+- Still open: Telegram/health-check alerts, a real reboot test, lid-close setting, first real private upload, scheduled cron run not yet observed.
