@@ -35,3 +35,10 @@
 - Currently the worker and scheduler on the laptop are started by hand (background processes started by Claude, logs in the session scratchpad). They stop when the laptop shuts down.
 - Posting without the laptop (GitHub Actions publisher) is a separate, later plan; the user approved the idea but it is not built. Needs repository secrets.
 - Cloud processing is blocked by the YouTube download block on data-centre IPs (see the "Cloud worker without the laptop" section).
+
+## Laptop auto-start is installed (2026-11-18)
+- Task "Snipster Worker" (at log on) runs `backend/scripts/start-snipster.ps1`, which keeps the worker and scheduler running hidden and restarts them if they crash. Check with `powershell -File backend\scripts\status-snipster.ps1`. Logs: `%LOCALAPPDATA%\Snipster\logs`. Remove with `uninstall-autostart.ps1`. Do not start a second worker by hand: the launcher kills strays of this project at start.
+- The worker reaches Neon through a DNS fallback when the network's DNS cannot resolve the database host (common on the user's hotspot/Wi-Fi): `app/core/dns_fallback.py`, `app/db/sync_engine.py`. Worker only; the Vercel API is unaffected. Do not "simplify" it back to `create_engine(settings.sync_database_url)` in the worker.
+- PowerShell notes: scripts must stay ASCII (Windows PowerShell 5.1); never pipe a native command's output into `Select-Object -First 1` when its exit code matters; do not pass multi-line code through `python -c`.
+- Live state: autopilot ON, dry run ON, Creative Commons, English, post time 19:45 Asia/Kolkata, 4 posts scheduled (14:15Z on Nov 18, 19, 20, 21). The Nov 18 one was overdue when the worker came back, so a rehearsal should appear on the first tick.
+- Open: real reboot test by the user; lid-close setting; alerts (Telegram, health check) still unset; cloud posting without the laptop (GitHub Actions publisher) approved in principle, not built.

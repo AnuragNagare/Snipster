@@ -59,16 +59,13 @@ def _get_sync_session():
     """Create a synchronous DB session for use inside Celery tasks."""
     global _SessionFactory
     if _SessionFactory is None:
-        from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
-        from app.core.config import settings
+        from app.db.sync_engine import make_sync_engine
 
         # psycopg2 for sync sessions in Celery workers. One engine (and pool) per
         # process — a hosted Postgres has a connection limit, and a new engine per
         # task would leak connections against it.
-        engine = create_engine(
-            settings.sync_database_url, pool_pre_ping=True, pool_recycle=300
-        )
+        engine = make_sync_engine()
         _SessionFactory = sessionmaker(bind=engine)
     return _SessionFactory()
 
