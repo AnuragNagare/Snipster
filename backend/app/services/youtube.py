@@ -112,7 +112,9 @@ class YouTubeService:
                 timeout=300.0,
             )
 
-    def upload(self, clip, user, privacy: str = "public", credit: str | None = None) -> dict[str, str]:
+    def upload(
+        self, clip, user, privacy: str = "public", credit: str | None = None, publish_at: datetime | None = None
+    ) -> dict[str, str]:
         """
         Upload a rendered clip to YouTube as a Short.
         Returns: {"post_id": str, "post_url": str}
@@ -149,6 +151,11 @@ class YouTubeService:
                     "selfDeclaredMadeForKids": False,
                 },
             }
+            if publish_at is not None:
+                # YouTube itself makes the video public at this moment. It must be uploaded as private for
+                # that to work, and it only ever becomes public (never unlisted).
+                metadata["status"]["privacyStatus"] = "private"
+                metadata["status"]["publishAt"] = publish_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
             response = self._post_upload(access_token, metadata, tmp_path)
             if response.status_code == 401:
@@ -165,7 +172,7 @@ class YouTubeService:
 
             video_id = response.json()["id"]
             post_url = f"https://www.youtube.com/shorts/{video_id}"
-            logger.info(f"[YOUTUBE] Published ({privacy}): {post_url}")
+            logger.info(f"[YOUTUBE] Published ({privacy}{', scheduled' if publish_at else ''}): {post_url}")
             return {"post_id": video_id, "post_url": post_url}
 
         finally:

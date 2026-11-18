@@ -209,7 +209,7 @@ def test_a_sign_in_error_fails_the_job_without_retrying(sync_db, session_factory
     job = make_job(sync_db)
     calls = []
 
-    def upload(clip, user, privacy, credit=None):
+    def upload(clip, user, privacy, credit=None, publish_at=None):
         calls.append(privacy)
         raise YouTubeAuthError("Reconnect YouTube in Settings.")
 
@@ -228,7 +228,7 @@ def test_the_task_uses_the_autopilot_privacy_setting(sync_db, session_factory, m
     job = make_job(sync_db)
     seen = []
 
-    def upload(clip, user, privacy, credit=None):
+    def upload(clip, user, privacy, credit=None, publish_at=None):
         seen.append(privacy)
         return {"post_id": "v1", "post_url": "https://www.youtube.com/shorts/v1"}
 

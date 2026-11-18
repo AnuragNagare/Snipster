@@ -3,7 +3,7 @@
 import json
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.workers.celery_app import celery_app
 from app.core.logging import logger
@@ -418,11 +418,20 @@ def publish_clip_task(self, job_id: str):
     logger.info(f"[PUBLISH] Starting job {job_id}")
     db = _get_sync_session()
     job = None
+    row = None
     uploaded = None  # the YouTube video id, once the upload has succeeded
 
     def label() -> str:
+        """For alerts to the user's private chat only. Never put this in a log: the logs of the cloud job are public."""
         caption = (job.clip.caption or "").strip() if job is not None and job.clip else ""
         return f"\"{caption[:60]}\"" if caption else f"job {job_id}"
+
+    def failure(**details) -> str:
+        """The stored failure details; failed_at lets the automatic retry wait the right time."""
+        return json.dumps({**details, "failed_at": datetime.now(timezone.utc).isoformat()})
+
+    def will_retry_automatically() -> bool:
+        return row is not None and bool(row.auto_retry)
 
     try:
         job = db.get(PublishJob, uuid.UUID(job_id))
@@ -443,7 +452,7 @@ def publish_clip_task(self, job_id: str):
         # Dry run applies to autopilot's own posts only: a post you start yourself always uploads.
         if job.autopilot and row is not None and row.dry_run:
             _save_published(db, job, DRY_RUN_POST_ID, None)
-            logger.info(f"[PUBLISH] DRY RUN: job {job_id} ({label()}) would have been uploaded")
+            logger.info(f"[PUBLISH] DRY RUN: job {job_id} would have been uploaded")
             return
 
         job.status = PublishStatus.PUBLISHING
@@ -457,8 +466,16 @@ def publish_clip_task(self, job_id: str):
         source = db.query(AutopilotSource).filter(AutopilotSource.source_video_id == clip.source_video_id).first()
         credit = credit_line(source)
 
+        # With YouTube scheduling on (public only), upload early as private and let YouTube make the video public at
+        # the exact time. A time that is already near or past means: upload and publish now.
+        publish_at = None
+        if row is not None and row.schedule_on_youtube and row.privacy == "public" and job.scheduled_at is not None:
+            when = job.scheduled_at if job.scheduled_at.tzinfo else job.scheduled_at.replace(tzinfo=timezone.utc)
+            if when > datetime.now(timezone.utc) + timedelta(minutes=5):
+                publish_at = when
+
         if job.platform == Platform.YOUTUBE:
-            result = youtube_service.upload(clip=clip, user=user, privacy=privacy, credit=credit)
+            result = youtube_service.upload(clip=clip, user=user, privacy=privacy, credit=credit, publish_at=publish_at)
         else:
             raise ValueError(f"Unknown platform: {job.platform}")
 
@@ -473,7 +490,7 @@ def publish_clip_task(self, job_id: str):
         db.rollback()
         if job is not None:
             job.status = PublishStatus.FAILED
-            job.error_info = json.dumps({"error": str(exc), "retry": self.request.retries, "auth": True})
+            job.error_info = failure(error=str(exc), retry=self.request.retries, auth=True)
             db.commit()
         alerts.send(f"Could not post {label()}: {exc}", key="auth", cooldown=3600)
     except Exception as exc:
@@ -484,7 +501,7 @@ def publish_clip_task(self, job_id: str):
             try:
                 db.rollback()
                 job.status = PublishStatus.FAILED
-                job.error_info = json.dumps({"error": f"Uploaded as {url} but not saved. Do NOT retry.", "uploaded": uploaded})
+                job.error_info = failure(error=f"Uploaded as {url} but not saved. Do NOT retry.", uploaded=uploaded)
                 db.commit()
             except Exception:
                 pass
@@ -494,9 +511,11 @@ def publish_clip_task(self, job_id: str):
         db.rollback()
         if job is not None:
             job.status = PublishStatus.FAILED
-            job.error_info = json.dumps({"error": str(exc), "retry": self.request.retries})
+            # A ValueError is a wrong setting or a missing record: trying again cannot help.
+            job.error_info = failure(error=str(exc), retry=self.request.retries, permanent=isinstance(exc, ValueError))
             db.commit()
-        if self.request.retries >= self.max_retries:
+        # When an automatic retry follows, stay quiet: the user is told if it is finally given up.
+        if self.request.retries >= self.max_retries and not (will_retry_automatically() and not isinstance(exc, ValueError)):
             alerts.send(f"Posting {label()} failed after {self.max_retries + 1} tries: {str(exc)[:300]}")
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
     finally:

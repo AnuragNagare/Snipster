@@ -249,6 +249,13 @@ class AutopilotSettings(Base):
     source_language: Mapped[str] = mapped_column(String(8), default="en")  # "en" or "hi", for Creative Commons search
     # Fixed times of day to post at, in `timezone`: "19:45,12:15". Empty = spread posts evenly.
     post_times: Mapped[str] = mapped_column(String(64), default="")
+    # Upload up to 3 hours early with YouTube's own publish time, so a late scheduler cannot make a post late.
+    # Only used with privacy "public" and dry run off.
+    schedule_on_youtube: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Put failed posts back automatically (15 min, 1 h, 4 h, 12 h; at most 5 tries; only while the post is
+    # under a day old).
+    auto_retry: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_cloud_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     last_tick_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_slot: Mapped[str] = mapped_column(String(32), nullable=True)  # e.g. "2026-11-15T09"

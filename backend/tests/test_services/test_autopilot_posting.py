@@ -320,7 +320,7 @@ def test_dry_run_never_blocks_a_post_you_start_yourself(sync_db, session_factory
     job = scheduled_job(sync_db, False, NOW)
     uploads = []
 
-    def upload(clip, user, privacy, credit=None):
+    def upload(clip, user, privacy, credit=None, publish_at=None):
         uploads.append(privacy)
         return {"post_id": "real1", "post_url": "https://www.youtube.com/shorts/real1"}
 
@@ -335,7 +335,7 @@ def test_with_dry_run_off_autopilot_posts_really_upload(sync_db, session_factory
     job = scheduled_job(sync_db, True, NOW)
     seen = []
 
-    def upload(clip, user, privacy, credit=None):
+    def upload(clip, user, privacy, credit=None, publish_at=None):
         seen.append(privacy)
         return {"post_id": "v7", "post_url": "https://www.youtube.com/shorts/v7"}
 

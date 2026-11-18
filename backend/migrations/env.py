@@ -51,6 +51,12 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        # A caller (scripts/migrate.py) handed us a ready connection, for example one that goes through
+        # the DNS fallback on a network that cannot resolve the database host.
+        do_run_migrations(connection)
+        return
     asyncio.run(run_async_migrations())
 
 

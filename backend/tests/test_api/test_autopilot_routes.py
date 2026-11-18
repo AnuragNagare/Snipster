@@ -285,3 +285,43 @@ async def test_activity_shows_who_a_creative_commons_video_came_from(client, mak
     src = (await client.get("/api/activity")).json()["sources"][0]
     assert src["channel_title"] == "Great Creator" and src["license"] == "creativeCommon"
     assert (src["views"], src["likes"]) == (120000, 4500)
+
+
+# ─── YouTube scheduling, auto retry, cloud heartbeat ─────────────────────────
+
+async def test_the_new_settings_start_off_and_on(client):
+    d = (await client.get("/api/autopilot/settings")).json()
+    assert d["schedule_on_youtube"] is False and d["auto_retry"] is True and d["seconds_since_cloud_run"] is None
+
+
+async def test_scheduling_and_retry_can_be_switched(client):
+    d = (await client.patch("/api/autopilot/settings", json={"schedule_on_youtube": True, "auto_retry": False})).json()
+    assert d["schedule_on_youtube"] is True and d["auto_retry"] is False
+    again = (await client.get("/api/autopilot/settings")).json()
+    assert again["schedule_on_youtube"] is True and again["auto_retry"] is False
+
+
+async def test_the_settings_report_when_the_cloud_publisher_last_ran(client, maker):
+    async with maker() as s:
+        s.add(m.AutopilotSettings(id=1, last_cloud_run_at=NOW - timedelta(minutes=12)))
+        await s.commit()
+    d = (await client.get("/api/autopilot/settings")).json()
+    assert 700 <= d["seconds_since_cloud_run"] <= 760
+
+
+async def test_an_upload_with_a_publish_time_still_ahead_says_when_it_goes_public(client, maker):
+    when = NOW + timedelta(hours=2)
+    await seed_job(maker, status=m.PublishStatus.PUBLISHED, post_id="yt1", when=NOW)
+    async with maker() as s:
+        job = (await s.execute(__import__("sqlalchemy").select(m.PublishJob))).scalars().one()
+        job.scheduled_at, job.retry_count = when, 2
+        await s.commit()
+    j = (await client.get("/api/activity")).json()["jobs"][0]
+    assert j["goes_public_at"] is not None and j["retry_count"] == 2
+
+
+async def test_no_goes_public_for_rehearsals_past_times_or_unposted(client, maker):
+    await seed_job(maker, status=m.PublishStatus.PUBLISHED, post_id="dry-run", when=NOW)           # rehearsal
+    await seed_job(maker, status=m.PublishStatus.PUBLISHED, post_id="old", when=NOW - timedelta(hours=1))  # time passed
+    await seed_job(maker, status=m.PublishStatus.SCHEDULED, post_id=None, when=NOW + timedelta(hours=1))  # not uploaded
+    assert all(j["goes_public_at"] is None for j in (await client.get("/api/activity")).json()["jobs"])

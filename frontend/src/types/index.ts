@@ -110,6 +110,12 @@ export interface AutopilotSettings {
   source_language: "en" | "hi";
   /** fixed times of day to post at, in `timezone`, like "12:15,19:45"; empty = spread evenly */
   post_times: string;
+  /** upload up to 3 hours early and let YouTube make the video public at the exact time (public only) */
+  schedule_on_youtube: boolean;
+  /** put failed posts back automatically (15 min, 1 h, 4 h, 12 h; at most 5 tries) */
+  auto_retry: boolean;
+  /** null = the cloud publisher has never run */
+  seconds_since_cloud_run: number | null;
   last_tick_at?: string;
   /** null = the scheduler has never run */
   seconds_since_tick: number | null;
@@ -133,6 +139,8 @@ export type AutopilotSettingsUpdate = Partial<
     | "source_mode"
     | "source_language"
     | "post_times"
+    | "schedule_on_youtube"
+    | "auto_retry"
   >
 >;
 
@@ -153,6 +161,9 @@ export interface ActivityJob {
   scheduled_at?: string;
   published_at?: string;
   created_at?: string;
+  retry_count: number;
+  /** uploaded with a YouTube publish time that is still ahead: when it will go public */
+  goes_public_at?: string;
 }
 
 export interface ActivitySource {

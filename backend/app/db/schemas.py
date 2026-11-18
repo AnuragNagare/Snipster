@@ -171,6 +171,9 @@ class AutopilotSettingsResponse(BaseModel):
     source_mode: str          # "own" or "creative_commons"
     source_language: str      # "en" or "hi"
     post_times: str           # "19:45,12:15" in `timezone`; empty = spread posts evenly
+    schedule_on_youtube: bool
+    auto_retry: bool
+    seconds_since_cloud_run: Optional[int] = None   # None = the cloud publisher has never run
     last_tick_at: Optional[datetime] = None
     seconds_since_tick: Optional[int] = None  # None = the scheduler has never run
     tick_minutes: int
@@ -192,6 +195,8 @@ class AutopilotSettingsUpdate(BaseModel):
     source_mode: Optional[Literal["own", "creative_commons"]] = None
     source_language: Optional[Literal["en", "hi"]] = None
     post_times: Optional[str] = Field(default=None, max_length=64)  # "" clears it
+    schedule_on_youtube: Optional[bool] = None
+    auto_retry: Optional[bool] = None
 
 
 class RunNowResponse(BaseModel):
@@ -213,6 +218,8 @@ class ActivityJob(BaseModel):
     scheduled_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    retry_count: int = 0
+    goes_public_at: Optional[datetime] = None   # uploaded with a YouTube publish time that is still ahead
 
 
 class ActivitySource(BaseModel):

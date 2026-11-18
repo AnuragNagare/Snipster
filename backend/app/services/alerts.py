@@ -64,7 +64,22 @@ def send(text: str, key: str | None = None, cooldown: int = 0) -> bool:
 
 def ping_healthcheck() -> bool:
     """Tell the dead-man's switch the worker is alive. A no-op when HEALTHCHECK_URL is not set."""
-    url = settings.HEALTHCHECK_URL.strip()
+    return _ping(settings.HEALTHCHECK_URL)
+
+
+def ping_cloud_healthcheck(fail: bool = False) -> bool:
+    """
+    Tell the cloud publisher's dead-man's switch it ran. With `fail`, report a failed run at once
+    (healthchecks.io: the same address plus "/fail"). A no-op when HEALTHCHECK_CLOUD_URL is not set.
+    """
+    url = settings.HEALTHCHECK_CLOUD_URL.strip()
+    if url and fail:
+        url = url.rstrip("/") + "/fail"
+    return _ping(url)
+
+
+def _ping(url: str) -> bool:
+    url = (url or "").strip()
     if not url:
         return False
     try:

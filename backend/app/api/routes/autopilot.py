@@ -45,6 +45,7 @@ async def _get_row(db: AsyncSession) -> AutopilotSettings:
             id=1, enabled=False, dry_run=True, auto_approve=False, posts_per_day=3,
             clips_per_video=2, run_times="9,18", timezone="UTC", privacy="private",
             source_mode="own", source_language="en", post_times="",
+            schedule_on_youtube=False, auto_retry=True,
         )
         db.add(row)
         await db.flush()
@@ -80,6 +81,8 @@ async def _settings_response(db: AsyncSession, row: AutopilotSettings) -> Autopi
         run_times=row.run_times, timezone=row.timezone, privacy=row.privacy,
         source_mode=row.source_mode or "own", source_language=row.source_language or "en",
         post_times=row.post_times or "",
+        schedule_on_youtube=bool(row.schedule_on_youtube), auto_retry=bool(row.auto_retry),
+        seconds_since_cloud_run=int((now - _aware(row.last_cloud_run_at)).total_seconds()) if row.last_cloud_run_at else None,
         last_tick_at=row.last_tick_at,
         seconds_since_tick=int((now - _aware(row.last_tick_at)).total_seconds()) if row.last_tick_at else None,
         tick_minutes=settings.AUTOPILOT_TICK_MINUTES,
@@ -182,6 +185,13 @@ async def get_activity(limit: int = Query(default=50, ge=1, le=200), db: AsyncSe
             dry_run=job.platform_post_id == DRY_RUN_POST_ID,
             post_url=job.platform_post_url or None, error=error, needs_reconnect=needs_reconnect,
             scheduled_at=job.scheduled_at, published_at=job.published_at, created_at=job.created_at,
+            retry_count=job.retry_count or 0,
+            goes_public_at=(
+                job.scheduled_at
+                if job.status == PublishStatus.PUBLISHED and job.platform_post_id not in (None, "", DRY_RUN_POST_ID)
+                and job.scheduled_at is not None and _aware(job.scheduled_at) > datetime.now(timezone.utc)
+                else None
+            ),
         ))
 
     sources = (

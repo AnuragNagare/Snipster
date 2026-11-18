@@ -436,7 +436,8 @@ def test_migration_chain_has_one_head_after_autopilot():
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "migrations")
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ["e5c2a8d41f96"]
+    assert script.get_heads() == ["f3b7d92a1c58"]
+    assert script.get_revision("f3b7d92a1c58").down_revision == "e5c2a8d41f96"
     assert script.get_revision("e5c2a8d41f96").down_revision == "d91b3c6e8a47"
     assert script.get_revision("d91b3c6e8a47").down_revision == "c7a2e9f15b83"
     assert script.get_revision("c7a2e9f15b83").down_revision == "b4e6d1a73c20"

@@ -268,7 +268,7 @@ def test_the_publish_task_passes_the_credit_for_cc_sources(sync_db, session_fact
     job = make_job(sync_db, dict(license="creativeCommon", channel_title="Great Creator"))
     seen = []
     run_publish(monkeypatch, session_factory, job.id,
-                lambda clip, user, privacy, credit=None: seen.append(credit) or {"post_id": "p", "post_url": "u"})
+                lambda clip, user, privacy, credit=None, publish_at=None: seen.append(credit) or {"post_id": "p", "post_url": "u"})
     assert seen and "Great Creator" in seen[0] and "srcvid" in seen[0]
 
 
@@ -277,7 +277,7 @@ def test_the_publish_task_passes_no_credit_for_own_videos(sync_db, session_facto
     job = make_job(sync_db, {})
     seen = []
     run_publish(monkeypatch, session_factory, job.id,
-                lambda clip, user, privacy, credit=None: seen.append(credit) or {"post_id": "p", "post_url": "u"})
+                lambda clip, user, privacy, credit=None, publish_at=None: seen.append(credit) or {"post_id": "p", "post_url": "u"})
     assert seen == [None]
 
 
@@ -443,7 +443,7 @@ def test_migration_adds_the_new_columns_after_the_previous_head():
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "migrations")
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ["e5c2a8d41f96"]
+    assert script.get_heads() == ["f3b7d92a1c58"]
     assert script.get_revision("e5c2a8d41f96").down_revision == "d91b3c6e8a47"
 
 

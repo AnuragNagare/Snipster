@@ -92,3 +92,29 @@ Secrets: 8 repository secrets (write-only): DATABASE_URL, STORAGE_ENDPOINT, STOR
 Proof: (1) a manual run with nothing due connected to the real database and said "Nothing due". (2) With the laptop's worker and scheduler stopped, a temporary due rehearsal post was published by the GitHub job and recorded as a rehearsal in the database. The temporary post was then deleted. (3) An earlier run showed the guard: the laptop's scheduler claimed a post one second before the cloud looked, so the cloud correctly did nothing.
 Limits: GitHub starts scheduled runs 5-30 minutes late, so a post can go out a little after 7:45 PM IST. GitHub pauses scheduled runs after 60 days with no repository activity (re-enable in the Actions tab or push any commit). A job claimed by the laptop but never run (laptop switched off right after claiming) waits in the queue until the laptop is back: the cloud only takes SCHEDULED posts. A failed upload stays FAILED until Retry is pressed on the Activity page, and Retry goes through the laptop's queue.
 Not changed: dry run is still ON, so nothing has been uploaded to YouTube.
+
+## Exact time, alerts, auto-retry (2026-11-18): IN PROGRESS
+Decisions: the repository stays PUBLIC (unlimited free Actions minutes, publisher keeps running every 15 minutes).
+
+#### Phase E0: Log fix
+- Log lines never carry caption text (only job ids). Telegram alerts may still name the caption (private chat).
+
+#### Phase E1: Exact posting time through YouTube's own scheduling
+- New setting `schedule_on_youtube` (off by default). When on, privacy is Public, and the post is not a dry run: the post is claimed up to 3 hours early and uploaded as private with YouTube's `publishAt` set to the exact slot (for example 19:45 IST). YouTube makes it public at that second, so a late GitHub run no longer matters.
+- Only when privacy is Public: `publishAt` can only make a video public. With Private or Unlisted the post goes out at the slot as before. A post whose time is already near or past is uploaded immediately.
+- Activity shows "uploaded, goes public at ...". Switching autopilot off does NOT cancel a video already uploaded with a publish time: it goes public unless the user changes it in YouTube Studio. Documented in the UI.
+- Unknown until tested: YouTube may keep uploads from an unaudited API project locked private, which could also stop the switch to public.
+
+#### Phase E2: Alerts and keep-alive for the cloud publisher
+- The cloud job pings a dead-man's-switch (healthchecks.io, new setting/secret `HEALTHCHECK_CLOUD_URL`) after every run, and pings `/fail` when a post failed. When pings stop (including the 60-day pause) the service messages the user.
+- The cloud job records `last_cloud_run_at`; the Activity page shows how long ago it ran; the laptop scheduler alerts (Telegram) if it has been silent for more than 3 hours.
+- `.github/workflows/keepalive.yml`: once a month a tiny commit keeps the repository active so GitHub does not pause scheduled workflows. Whether a bot commit counts as activity is not guaranteed by GitHub's documentation.
+
+#### Phase E3: Automatic retry
+- Failed posts are put back (SCHEDULED) after 15 minutes, 1 hour, 4 hours, 12 hours, at most 5 automatic tries, only while the post is less than 24 hours old, then an alert says it was given up. Setting `auto_retry` (on by default).
+- Never retried: sign-in problems (needs reconnect), "uploaded but not saved" (a retry would post twice), invalid settings, jobs with no recorded failure time.
+- Done by both the laptop scheduler and the cloud job, with one conditional update so a post is requeued only once.
+- The publish task no longer alerts at its own first failure when an automatic retry will follow.
+
+#### Phase E4: Tests, migration, deploy, docs
+- Tests for every rule above, mutation checks, workflow file checks; migration `f3b7d92a1c58`; frontend toggles and status text; real runs of the cloud job and the keep-alive workflow; Vercel redeploy.

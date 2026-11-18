@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = ""
     # Dead-man's switch: the worker requests this URL after every healthy tick (healthchecks.io etc.).
     HEALTHCHECK_URL: str = ""
+    # Same idea for the cloud publisher (GitHub Actions): a SECOND check, so a silent laptop and a silent
+    # cloud job are told apart. Pinged after every run; "/fail" is added when a post failed.
+    HEALTHCHECK_CLOUD_URL: str = ""
 
     # ── Derived database settings ────────────────────────────────────────────
     @property

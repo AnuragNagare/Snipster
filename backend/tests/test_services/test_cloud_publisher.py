@@ -26,7 +26,7 @@ def world(sync_db, session_factory, monkeypatch):
     monkeypatch.setattr(alerts, "send", lambda *a, **k: True)
     uploads = []
 
-    def fake_upload(clip, user, privacy, credit=None):
+    def fake_upload(clip, user, privacy, credit=None, publish_at=None):
         uploads.append({"privacy": privacy, "credit": credit})
         return {"post_id": f"yt{len(uploads)}", "post_url": f"https://www.youtube.com/shorts/yt{len(uploads)}"}
 
@@ -162,7 +162,7 @@ def test_main_exits_with_1_when_a_post_failed_and_0_otherwise(world, monkeypatch
     monkeypatch.setattr(youtube_service, "upload", lambda **k: (_ for _ in ()).throw(YouTubeAuthError("expired")))
     assert cp.main() == 1
     out = capsys.readouterr().out
-    assert "failed" in out and "Retry" in out
+    assert "failed" in out and "retried automatically" in out
 
 
 def test_nothing_due_exits_cleanly(world, capsys):
@@ -211,7 +211,8 @@ def test_the_workflow_gets_only_the_secrets_publishing_needs():
 
     env = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["publish"]["steps"][-1]["env"]
     assert set(env) == {"DATABASE_URL", "STORAGE_ENDPOINT", "STORAGE_BUCKET", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
-                        "TOKEN_ENCRYPTION_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"}
+                        "TOKEN_ENCRYPTION_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+                        "HEALTHCHECK_CLOUD_URL"}
     for forbidden in ("REDIS_URL", "GEMINI_API_KEY", "ADMIN_PASSWORD", "SECRET_KEY", "YOUTUBE_API_KEY"):
         assert forbidden not in env                           # not needed to post: least privilege
 

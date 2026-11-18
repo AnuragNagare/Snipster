@@ -6,6 +6,7 @@ the one the user connected: the uploads list is derived from that channel's id.
 Source policy: own uploads only. Other creators' videos are never picked.
 """
 
+import json
 import re
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -39,6 +40,9 @@ YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
 # cannot block autopilot forever.
 STALE_AFTER = timedelta(hours=12)
 
+# With YouTube scheduling on, a post is uploaded up to this long before its time.
+EARLY_UPLOAD = timedelta(hours=3)
+
 
 class AutopilotConfigError(Exception):
     """Autopilot cannot run until the user fixes a setting (API key missing, YouTube not connected, ...)."""
@@ -54,6 +58,7 @@ def get_settings_row(db: Session) -> AutopilotSettings:
             id=1, enabled=False, dry_run=True, auto_approve=False, posts_per_day=3,
             clips_per_video=2, run_times="9,18", timezone="UTC", privacy="private",
             source_mode="own", source_language="en", post_times="",
+            schedule_on_youtube=False, auto_retry=True,
         )
         db.add(row)
         db.commit()
@@ -665,17 +670,115 @@ def finalize_ready_sources(db: Session, row: AutopilotSettings, now: datetime, n
     return notes
 
 
+# ─── Automatic retry of failed posts ─────────────────────────────────────────
+
+RETRY_DELAYS = [timedelta(minutes=15), timedelta(hours=1), timedelta(hours=4), timedelta(hours=12)]
+MAX_AUTO_RETRIES = 5            # manual and automatic tries together
+MAX_POST_AGE = timedelta(hours=24)   # a post older than this is no longer worth posting late
+STALE_CLOUD_AFTER = timedelta(hours=3)
+
+
+def parse_failure(error_info: str | None) -> dict | None:
+    """The stored failure details of a job, or None when there are none (or they are not readable)."""
+    if not error_info:
+        return None
+    try:
+        info = json.loads(error_info)
+    except ValueError:
+        return None
+    return info if isinstance(info, dict) else None
+
+
+def failure_is_retryable(info: dict) -> bool:
+    """
+    False for failures a retry cannot fix, or must never repeat:
+    a sign-in that must be redone, a video that is already on YouTube (a retry would post it twice),
+    a bad setting, or one we already gave up on.
+    """
+    return not (info.get("auth") or info.get("uploaded") or info.get("permanent") or info.get("gave_up"))
+
+
+def _failed_at(info: dict) -> datetime | None:
+    raw = info.get("failed_at")
+    if not raw:
+        return None
+    try:
+        return _aware(datetime.fromisoformat(raw))
+    except ValueError:
+        return None
+
+
+def retry_failed_jobs(db: Session, now: datetime, notify=alerts.send) -> int:
+    """
+    Put failed posts back so the next dispatch tries them again: after 15 minutes, 1 hour, 4 hours, then 12
+    hours, at most MAX_AUTO_RETRIES times, and only while the post is under a day old. When a post cannot be
+    retried any more the user is told once. Returns how many were put back.
+
+    A post is put back with one conditional UPDATE (FAILED -> SCHEDULED at the same try count), so the laptop
+    and the cloud job cannot both put back the same one.
+    """
+    requeued = 0
+    for job in db.scalars(select(PublishJob).where(PublishJob.status == PublishStatus.FAILED)).all():
+        info = parse_failure(job.error_info)
+        failed_at = _failed_at(info) if info else None
+        if info is None or failed_at is None or not failure_is_retryable(info):
+            continue   # nothing recorded, or a failure that needs the user
+
+        origin = _aware(job.scheduled_at or job.created_at)
+        if now - origin > MAX_POST_AGE or job.retry_count >= MAX_AUTO_RETRIES:
+            given_up = json.dumps({**info, "gave_up": True})
+            changed = db.execute(
+                update(PublishJob).where(PublishJob.id == job.id, PublishJob.error_info == job.error_info)
+                .values(error_info=given_up)
+            ).rowcount
+            db.commit()
+            if changed == 1:
+                notify(
+                    f"A post could not be sent after {job.retry_count} tries and was given up "
+                    f"(last error: {str(info.get('error', ''))[:200]}). Press Retry on the Activity page if you still want it."
+                )
+            continue
+
+        if now < failed_at + RETRY_DELAYS[min(job.retry_count, len(RETRY_DELAYS) - 1)]:
+            continue
+
+        claimed = db.execute(
+            update(PublishJob)
+            .where(PublishJob.id == job.id, PublishJob.status == PublishStatus.FAILED, PublishJob.retry_count == job.retry_count)
+            .values(status=PublishStatus.SCHEDULED, retry_count=job.retry_count + 1, scheduled_at=job.scheduled_at or now)
+        ).rowcount
+        db.commit()
+        if claimed == 1:
+            requeued += 1
+            logger.info(f"[AUTOPILOT] Retrying failed post {job.id} (try {job.retry_count + 1})")
+    return requeued
+
+
+def dispatch_lead(row: AutopilotSettings) -> timedelta:
+    """
+    How long before its time a post may be claimed and uploaded. With YouTube's own scheduling (public
+    visibility, dry run off) the clip is uploaded early with a publish time, so a late scheduler cannot make
+    it late. Otherwise a post goes out at its time.
+    """
+    if row.schedule_on_youtube and row.privacy == "public" and not row.dry_run:
+        return EARLY_UPLOAD
+    return timedelta(0)
+
+
 # ─── Dispatcher for scheduled posts ──────────────────────────────────────────
 
-def dispatch_due_publish_jobs(db: Session, now: datetime, publish, include_autopilot: bool = True) -> int:
+def dispatch_due_publish_jobs(
+    db: Session, now: datetime, publish, include_autopilot: bool = True, lead: timedelta = timedelta(0)
+) -> int:
     """
     Queue every SCHEDULED publish job whose time has come. Returns how many were queued.
 
     Each job is claimed with one conditional UPDATE (SCHEDULED -> QUEUED), so two overlapping
     ticks cannot both queue the same post. With `include_autopilot=False` (the kill switch is off)
-    only posts a person scheduled by hand go out.
+    only posts a person scheduled by hand go out. With a `lead`, posts due within that time are claimed too
+    (they are uploaded early with YouTube's own publish time).
     """
-    query = select(PublishJob.id).where(PublishJob.status == PublishStatus.SCHEDULED, PublishJob.scheduled_at <= now)
+    query = select(PublishJob.id).where(PublishJob.status == PublishStatus.SCHEDULED, PublishJob.scheduled_at <= now + lead)
     if not include_autopilot:
         query = query.where(PublishJob.autopilot.is_(False))
     due = db.scalars(query).all()
@@ -721,9 +824,19 @@ def run_tick(
     """
     now = now or datetime.now(timezone.utc)
     row = get_settings_row(db)
-    summary: dict = {"dispatched": 0, "picked": None, "scheduled": [], "note": None}
+    summary: dict = {"dispatched": 0, "retried": 0, "picked": None, "scheduled": [], "note": None}
 
-    summary["dispatched"] = dispatch_due_publish_jobs(db, now, publish, include_autopilot=row.enabled)
+    if row.auto_retry:
+        summary["retried"] = retry_failed_jobs(db, now, notify)
+    summary["dispatched"] = dispatch_due_publish_jobs(
+        db, now, publish, include_autopilot=row.enabled, lead=dispatch_lead(row)
+    )
+    if row.last_cloud_run_at and now - _aware(row.last_cloud_run_at) > STALE_CLOUD_AFTER:
+        notify(
+            "The cloud publisher has not run for over 3 hours. GitHub may have paused it: open the Actions tab "
+            "of the repository and re-enable the workflow.",
+            key="cloud-stale", cooldown=12 * 3600,
+        )
     failed = sync_source_statuses(db, now, notify)
     if failed and row.last_run_slot and failures_today(db, row, now) <= MAX_RETRIES_PER_DAY:
         row.last_run_slot = None  # this run slot produced nothing: let it pick the next candidate

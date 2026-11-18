@@ -106,6 +106,9 @@ function SettingsCard({
   const seen = settings.seconds_since_tick;
   const workerOk = seen !== null && seen < Math.max(15, settings.tick_minutes * 3) * 60;
   const live = settings.enabled && !settings.dry_run;
+  const cloudSeen = settings.seconds_since_cloud_run;
+  // The cloud job runs every 15 minutes, but GitHub can start it up to about 30 minutes late.
+  const cloudOk = cloudSeen !== null && cloudSeen < 2 * 3600;
 
   return (
     <section className="bg-gray-900 border border-gray-700 rounded-xl p-5 space-y-5">
@@ -116,6 +119,18 @@ function SettingsCard({
             {settings.posted_today} posted today · {settings.scheduled_count} waiting
           </p>
         </div>
+        {cloudSeen !== null && (
+          <span
+            className={`text-xs px-2.5 py-1 rounded-full border ${
+              cloudOk
+                ? "border-green-700 text-green-300 bg-green-950/40"
+                : "border-amber-700 text-amber-300 bg-amber-950/40"
+            }`}
+            title="The cloud publisher sends due posts even when your laptop is off. It checks every 15 minutes."
+          >
+            {cloudOk ? `Cloud publisher ran ${ago(cloudSeen)}` : `Cloud publisher quiet (${ago(cloudSeen)})`}
+          </span>
+        )}
         <span
           className={`text-xs px-2.5 py-1 rounded-full border ${
             workerOk
@@ -155,6 +170,24 @@ function SettingsCard({
           checked={settings.dry_run}
           disabled={busy}
           onChange={(v) => save({ dry_run: v })}
+        />
+        <Toggle
+          label="Exact time through YouTube"
+          hint={
+            settings.privacy === "public"
+              ? "Uploads up to 3 hours early and YouTube makes the video public at the exact minute. A late cloud run cannot make a post late. Once uploaded, switching autopilot off does NOT cancel it: change or delete it in YouTube Studio."
+              : "Needs upload visibility Public (YouTube can only schedule a video to become public). Off for now."
+          }
+          checked={settings.schedule_on_youtube}
+          disabled={busy}
+          onChange={(v) => save({ schedule_on_youtube: v })}
+        />
+        <Toggle
+          label="Retry failed posts automatically"
+          hint="Tries again after 15 minutes, 1 hour, 4 hours, then 12 hours (at most 5 tries, only within a day). Sign-in problems need you to reconnect YouTube."
+          checked={settings.auto_retry}
+          disabled={busy}
+          onChange={(v) => save({ auto_retry: v })}
         />
         <Toggle
           label="Approve clips automatically"
@@ -309,8 +342,11 @@ function JobRow({ job, onRetry, busy }: { job: ActivityJob; onRetry: (id: string
     publishing: "text-yellow-400",
     failed: "text-red-400",
   };
-  const time =
-    job.status === "scheduled" ? `goes out ${when(job.scheduled_at)}` : when(job.published_at || job.created_at);
+  const time = job.goes_public_at
+    ? `uploaded, goes public ${when(job.goes_public_at)}`
+    : job.status === "scheduled"
+    ? `goes out ${when(job.scheduled_at)}`
+    : when(job.published_at || job.created_at);
 
   return (
     <li className="py-3 flex flex-col gap-1">
@@ -325,6 +361,11 @@ function JobRow({ job, onRetry, busy }: { job: ActivityJob; onRetry: (id: string
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">manual</span>
         )}
         {label && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{label}</span>}
+        {job.retry_count > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-amber-300">
+            retry {job.retry_count}
+          </span>
+        )}
         {job.post_url && (
           <a
             href={job.post_url}
