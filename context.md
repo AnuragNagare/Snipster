@@ -64,3 +64,7 @@
 - Hindi Creative Commons has 1 eligible video (news): not worth enabling. English has about 14 per month.
 - A cancelled pick keeps its `autopilot_sources` row (status failed) so it is never picked again; deleting that row would make it eligible again.
 - Open: two posts scheduled for Nov 20 and 21 come from a refused film review; decide to remove them. Consider turning auto-approve off for Creative Commons mode.
+
+## Email alerts (2026-11-19)
+- Alerts go to Telegram and/or Gmail SMTP (`SMTP_USER`, `SMTP_PASSWORD` app password, optional `ALERT_EMAIL_TO`), in `backend/.env` for the laptop and as GitHub secrets for the cloud job. Test with `python scripts\test_alert.py` from `backend`. Not set up yet: waiting for the user's Gmail address and app password; until then alerts only appear in the logs.
+- Never write the user's email address or app password into the repository, a log line, or a commit; the workflow reads them from secrets.

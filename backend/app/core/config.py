@@ -121,6 +121,13 @@ class Settings(BaseSettings):
     # https://api.telegram.org/bot<token>/getUpdates after you message the bot once.
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
+    # Email alerts through SMTP (Gmail by default). For Gmail use an APP PASSWORD, not your normal password:
+    # Google account > Security > 2-Step Verification > App passwords. Leave SMTP_USER empty to turn email off.
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 465          # SSL
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    ALERT_EMAIL_TO: str = ""      # empty = send to SMTP_USER itself
     # Dead-man's switch: the worker requests this URL after every healthy tick (healthchecks.io etc.).
     HEALTHCHECK_URL: str = ""
     # Same idea for the cloud publisher (GitHub Actions): a SECOND check, so a silent laptop and a silent

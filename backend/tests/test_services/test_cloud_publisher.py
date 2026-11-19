@@ -4,10 +4,12 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from app import cloud_publisher as cp
+from app.core.config import settings
 from app.db import models as m
 from app.services import alerts
 from app.services import autopilot as ap
@@ -212,7 +214,7 @@ def test_the_workflow_gets_only_the_secrets_publishing_needs():
     env = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["publish"]["steps"][-1]["env"]
     assert set(env) == {"DATABASE_URL", "STORAGE_ENDPOINT", "STORAGE_BUCKET", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
                         "TOKEN_ENCRYPTION_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-                        "HEALTHCHECK_CLOUD_URL"}
+                        "HEALTHCHECK_CLOUD_URL", "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"}
     for forbidden in ("REDIS_URL", "GEMINI_API_KEY", "ADMIN_PASSWORD", "SECRET_KEY", "YOUTUBE_API_KEY"):
         assert forbidden not in env                           # not needed to post: least privilege
 
@@ -228,3 +230,139 @@ def test_the_publisher_does_not_need_the_heavy_libraries():
             "print('HEAVY:' + ','.join(bad))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=Path(__file__).resolve().parents[2])
     assert out.stdout.strip().endswith("HEAVY:"), out.stdout + out.stderr
+
+
+# ─── Email alerts (Gmail SMTP) ───────────────────────────────────────────────
+
+class FakeSMTP:
+    """Stands in for smtplib.SMTP_SSL: records what would be sent, optionally failing."""
+
+    instances = []
+    fail = None
+
+    def __init__(self, host, port, timeout=None):
+        if FakeSMTP.fail == "connect":
+            raise ConnectionError("cannot connect to " + host)
+        self.host, self.port, self.timeout = host, port, timeout
+        self.logged_in, self.sent = None, []
+        FakeSMTP.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def login(self, user, password):
+        if FakeSMTP.fail == "login":
+            import smtplib
+            raise smtplib.SMTPAuthenticationError(535, b"bad credentials for " + user.encode())
+        self.logged_in = (user, password)
+
+    def send_message(self, message):
+        self.sent.append(message)
+
+
+@pytest.fixture
+def email(monkeypatch):
+    FakeSMTP.instances, FakeSMTP.fail = [], None
+    monkeypatch.setattr(alerts, "_last_sent", {})
+    monkeypatch.setattr(alerts.smtplib, "SMTP_SSL", FakeSMTP)
+    monkeypatch.setattr(settings, "SMTP_USER", "me@gmail.com")
+    monkeypatch.setattr(settings, "SMTP_PASSWORD", "app-pass-word-1234")
+    monkeypatch.setattr(settings, "ALERT_EMAIL_TO", "")
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setattr(settings, "TELEGRAM_CHAT_ID", "")
+    return FakeSMTP
+
+
+def test_an_alert_is_emailed_to_the_user_through_gmail_ssl(email):
+    assert alerts.send("A post failed after 4 tries: network down") is True
+    server = email.instances[0]
+    assert (server.host, server.port) == ("smtp.gmail.com", 465)
+    assert server.logged_in == ("me@gmail.com", "app-pass-word-1234")
+    mail = server.sent[0]
+    assert mail["To"] == "me@gmail.com" and mail["From"] == "me@gmail.com"      # to the user themself by default
+    assert mail["Subject"] == "Snipster: A post failed after 4 tries: network down"
+    assert "network down" in mail.get_content() and "Sent by Snipster" in mail.get_content()
+
+
+def test_the_alert_can_go_to_another_address(email, monkeypatch):
+    monkeypatch.setattr(settings, "ALERT_EMAIL_TO", "phone@example.com")
+    alerts.send("x")
+    assert email.instances[0].sent[0]["To"] == "phone@example.com"
+
+
+def test_a_long_multiline_alert_gets_a_one_line_subject_and_no_header_injection(email):
+    alerts.send("First line\nBcc: attacker@example.com\nmore " + "x" * 300)
+    mail = email.instances[0].sent[0]
+    assert "\n" not in mail["Subject"] and len(mail["Subject"]) <= 120
+    assert mail["Subject"] == "Snipster: First line"
+    assert mail["Bcc"] is None and "Bcc: attacker@example.com" in mail.get_content()    # only in the body, harmless
+
+
+def test_no_email_is_sent_when_it_is_not_set_up(monkeypatch):
+    FakeSMTP.instances = []
+    monkeypatch.setattr(alerts.smtplib, "SMTP_SSL", FakeSMTP)
+    monkeypatch.setattr(settings, "SMTP_USER", "")
+    monkeypatch.setattr(settings, "SMTP_PASSWORD", "")
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    assert alerts.send("x") is False and FakeSMTP.instances == []
+    monkeypatch.setattr(settings, "SMTP_USER", "me@gmail.com")             # a user name alone is not enough
+    assert alerts.email_configured() is False
+
+
+@pytest.mark.parametrize("failure", ["login", "connect"])
+def test_a_failing_email_never_raises_and_never_leaks_the_password_or_address(email, caplog, failure):
+    email.fail = failure
+    with caplog.at_level("WARNING"):
+        assert alerts.send("x") is False
+    assert "Email send failed" in caplog.text
+    assert "app-pass-word-1234" not in caplog.text and "me@gmail.com" not in caplog.text and "smtp.gmail.com" not in caplog.text
+
+
+def test_telegram_and_email_both_get_the_alert_when_both_are_set_up(email, monkeypatch):
+    sent = []
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "1:abc")
+    monkeypatch.setattr(settings, "TELEGRAM_CHAT_ID", "42")
+    monkeypatch.setattr(alerts.httpx, "post", lambda url, json, timeout: sent.append(json["text"]) or SimpleNamespace(status_code=200))
+    assert alerts.send("both") is True
+    assert sent == ["Snipster: both"] and len(email.instances[0].sent) == 1
+
+
+def test_one_channel_failing_does_not_stop_the_other(email, monkeypatch):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "1:abc")
+    monkeypatch.setattr(settings, "TELEGRAM_CHAT_ID", "42")
+    monkeypatch.setattr(alerts.httpx, "post", lambda *a, **k: (_ for _ in ()).throw(ConnectionError("down")))
+    assert alerts.send("x") is True                                        # email still delivered
+    email.fail = "login"
+    assert alerts.send("y") is False                                       # both failed
+
+
+def test_the_cooldown_applies_to_email_too(email):
+    assert alerts.send("tick failed", key="tick", cooldown=3600) is True
+    assert alerts.send("tick failed", key="tick", cooldown=3600) is False
+    assert len(email.instances) == 1
+
+
+def test_a_failed_send_does_not_start_the_cooldown(email):
+    email.fail = "login"
+    assert alerts.send("x", key="k", cooldown=3600) is False
+    email.fail = None
+    assert alerts.send("x", key="k", cooldown=3600) is True                # the user still gets it once the fault clears
+
+
+def test_the_test_script_reports_each_channel_and_prints_no_secrets(email):
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, "scripts/test_alert.py"], capture_output=True, text=True,
+                         cwd=Path(__file__).resolve().parents[2], env={**__import__("os").environ, "SMTP_USER": "", "SMTP_PASSWORD": "", "TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""})
+    assert out.returncode == 1 and "Nothing is set up" in out.stdout
+
+
+def test_the_alert_settings_default_to_gmail():
+    from app.core.config import Settings
+
+    s = Settings(_env_file=None)
+    assert (s.SMTP_HOST, s.SMTP_PORT, s.SMTP_USER, s.SMTP_PASSWORD, s.ALERT_EMAIL_TO) == ("smtp.gmail.com", 465, "", "", "")
