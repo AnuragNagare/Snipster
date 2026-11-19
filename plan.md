@@ -130,3 +130,14 @@ User steps still open
 1. Create a free check at healthchecks.io (period 15 minutes, grace time 1 hour, notifications to email or Telegram), then store its ping URL: `gh secret set HEALTHCHECK_CLOUD_URL --repo AnuragNagare/Snipster` (or give the URL to Claude).
 2. Telegram bot token and chat id (also GitHub secrets `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` and `backend/.env`) so alerts reach the phone.
 3. Decide when to switch on "Exact time through YouTube" (needs Public visibility and dry run off, so after the YouTube API audit).
+
+## Content filters for the Creative Commons picker (2026-11-19): DONE
+Why: the picker ranks only by views and likes, so it picked a sponsored (#ad) recording of a Madden game livestream (gaming category, past live stream), a Madden stream in the Sports category, and a film review made of movie clips. A "Creative Commons" label on such videos cannot be trusted: the uploader rarely holds the rights to game, league, sponsor or film footage.
+Rules added (all in `services/autopilot.py`, settings in `core/config.py` and `.env.example`):
+- Blocked categories now also include 17 Sports and 20 Gaming (`AUTOPILOT_CC_BLOCK_CATEGORIES`).
+- Recordings of live streams are skipped (`AUTOPILOT_CC_ALLOW_LIVE_RECORDINGS`, default false), detected through `liveStreamingDetails`.
+- Sponsored videos are skipped: YouTube's own paid-placement flag, plus words in the title or description (#ad, #sponsored, sponsor..., paid promotion/partnership, brought to you by, promo/discount/coupon code, affiliate link). Real finding: the Madden stream had the paid flag OFF, only the text gave it away.
+- Titles with blocked words are skipped (`AUTOPILOT_CC_BLOCK_WORDS`): reaction(s), react(s), reacting, trailer, teaser, full movie, full episode, highlights, gameplay, walkthrough, movie review, film review, box office, recap, compilation.
+Result on real data: English eligible videos went from 21 to 14 and the Ramayana review and the Madden streams are refused; Hindi went from 4 to 1 (news recordings only), so Hindi Creative Commons is not usable.
+Limits: this reduces risk, it does not prove a video is safe to reuse. Commentary channels that talk over news broadcasts (for example clips of CNBC or Fox News) still pass. Whack-a-mole is expected: keep Dry run on and keep clips for review before real uploads.
+Open for the user: two already scheduled posts (2026-11-20 and 2026-11-21) come from the refused Ramayana movie review; they are rehearsals while dry run is on. Whether to remove them, and whether to turn off "Approve clips automatically" in Creative Commons mode, is the user's decision.

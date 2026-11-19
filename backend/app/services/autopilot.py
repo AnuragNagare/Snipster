@@ -229,7 +229,8 @@ def fetch_cc_candidates(language: str, *, now: datetime | None = None) -> list[d
 
     found = []
     for i in range(0, len(ids), 50):
-        data = _get("videos", {"part": "snippet,contentDetails,statistics,status", "id": ",".join(ids[i:i + 50]), "maxResults": 50})
+        data = _get("videos", {"part": "snippet,contentDetails,statistics,status,liveStreamingDetails,paidProductPlacementDetails",
+                      "id": ",".join(ids[i:i + 50]), "maxResults": 50})
         for item in data.get("items", []):
             snip, stats, status = item.get("snippet", {}), item.get("statistics", {}), item.get("status", {})
             found.append({
@@ -244,6 +245,9 @@ def fetch_cc_candidates(language: str, *, now: datetime | None = None) -> list[d
                 "channel_id": snip.get("channelId", ""),
                 "channel_title": snip.get("channelTitle", ""),
                 "category": str(snip.get("categoryId", "")),
+                "description": (snip.get("description") or "")[:2000],
+                "was_live": bool(item.get("liveStreamingDetails")),
+                "paid_placement": bool((item.get("paidProductPlacementDetails") or {}).get("hasPaidProductPlacement", False)),
                 "views": int(stats.get("viewCount", 0)),
                 "likes": int(stats.get("likeCount", 0)),
                 "language": (snip.get("defaultAudioLanguage") or snip.get("defaultLanguage") or "").lower(),
@@ -256,10 +260,35 @@ def cc_score(video: dict) -> int:
     return video.get("views", 0) + 50 * video.get("likes", 0)
 
 
+# Words that mark a sponsored or promotional video. The uploader's own "paid promotion" flag is often left off,
+# so the title and description are read too ("#ad" must not match "#adventure": hence the word boundary).
+_SPONSOR_WORDS = re.compile(
+    r"(#ad\b|#sponsored|#sponsor\b|\bsponsor\w*|\bpaid (?:promotion|partnership)\b|\bbrought to you by\b"
+    r"|\bpromo code\b|\bdiscount code\b|\bcoupon code\b|\baffiliate link\b)",
+    re.IGNORECASE,
+)
+
+
+def has_blocked_word(video: dict) -> bool:
+    """True when the title contains one of the blocked words or phrases (AUTOPILOT_CC_BLOCK_WORDS)."""
+    words = [w.strip() for w in settings.AUTOPILOT_CC_BLOCK_WORDS.split(",") if w.strip()]
+    if not words:
+        return False
+    pattern = r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b"
+    return bool(re.search(pattern, video.get("title", ""), re.IGNORECASE))
+
+
+def looks_sponsored(video: dict) -> bool:
+    """True when the video is flagged as a paid placement, or its title or description reads like a sponsor read."""
+    if video.get("paid_placement"):
+        return True
+    return bool(_SPONSOR_WORDS.search(f"{video.get('title', '')}\n{video.get('description', '')}"))
+
+
 def select_cc_candidate(candidates: list[dict], used_ids: set[str], *, own_channel_id: str = "", language: str = "en") -> dict | None:
     """
-    The most popular unused video that is really Creative Commons, public, not live, not made for kids,
-    within the length limits, popular enough, in the wanted language, and not from the user's own channel.
+    The most popular unused video that is really Creative Commons, public, not live, not a recording of a
+    live stream, not sponsored, no blocked word in its title, not in a blocked category, not made for kids, within the length limits, popular enough, in the wanted language, and not from the user's own channel.
     """
     lo, hi = settings.AUTOPILOT_MIN_DURATION, settings.AUTOPILOT_MAX_DURATION
     blocked = {c.strip() for c in settings.AUTOPILOT_CC_BLOCK_CATEGORIES.split(",") if c.strip()}
@@ -267,6 +296,9 @@ def select_cc_candidate(candidates: list[dict], used_ids: set[str], *, own_chann
         v for v in candidates
         if v.get("license") == CC_LICENSE
         and v.get("category", "") not in blocked
+        and (settings.AUTOPILOT_CC_ALLOW_LIVE_RECORDINGS or not v.get("was_live"))
+        and not looks_sponsored(v)
+        and not has_blocked_word(v)
         and v["id"] not in used_ids
         and v.get("public")
         and not v.get("live")

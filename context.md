@@ -58,3 +58,9 @@
 - Public repo: logs are public, so never log captions, URLs of private things, or secrets. The test `test_publish_logs_never_contain_the_caption` guards this.
 - `keepalive.yml` commits monthly, so `git pull --rebase` before pushing if the bot committed.
 - Dry run is still ON; nothing has been uploaded to YouTube yet.
+
+## Creative Commons filters (2026-11-19)
+- The picker now skips gaming and sports categories, live-stream recordings, sponsored videos (paid flag and words like #ad), and titles with review/reaction/trailer/highlights style words. Settings: `AUTOPILOT_CC_BLOCK_CATEGORIES`, `AUTOPILOT_CC_ALLOW_LIVE_RECORDINGS`, `AUTOPILOT_CC_BLOCK_WORDS` in `backend/.env` (defaults in `core/config.py`). Worker-only.
+- Hindi Creative Commons has 1 eligible video (news): not worth enabling. English has about 14 per month.
+- A cancelled pick keeps its `autopilot_sources` row (status failed) so it is never picked again; deleting that row would make it eligible again.
+- Open: two posts scheduled for Nov 20 and 21 come from a refused film review; decide to remove them. Consider turning auto-approve off for Creative Commons mode.

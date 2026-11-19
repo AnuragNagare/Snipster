@@ -552,3 +552,129 @@ def test_clip_selection_also_refuses_an_empty_transcript(sync_db, session_factor
     assert asked == []
     saved = session_factory().get(m.SourceVideo, video.id)
     assert saved.status == m.VideoStatus.FAILED and saved.error_message.startswith("Almost no speech")
+
+
+# ─── Content filters: games, sport, live recordings, sponsored videos ────────
+
+@pytest.mark.parametrize("category", ["20", "17"])
+def test_gaming_and_sports_are_blocked_by_default(category):
+    assert ap.select_cc_candidate([cc("x", category=category)], set()) is None
+
+
+def test_a_recording_of_a_live_stream_is_skipped_unless_allowed(monkeypatch):
+    live = cc("x", was_live=True)
+    assert ap.select_cc_candidate([live], set()) is None
+    monkeypatch.setattr(settings, "AUTOPILOT_CC_ALLOW_LIVE_RECORDINGS", True)
+    assert ap.select_cc_candidate([live], set()) is not None
+
+
+@pytest.mark.parametrize("text", [
+    "Check out my new video #ad",
+    "This video is sponsored by Acme",
+    "Thanks to our sponsor for supporting the channel",
+    "Use promo code SAVE10 at checkout",
+    "paid promotion",
+    "Paid Partnership with Brand",
+    "Brought to you by Brand",
+    "discount code TREE20",
+    "affiliate link below",
+    "coupon code FREE",
+])
+def test_sponsor_words_in_the_title_or_description_exclude_a_video(text):
+    assert ap.select_cc_candidate([cc("x", description=text)], set()) is None
+    assert ap.select_cc_candidate([cc("x", title=text)], set()) is None
+
+
+@pytest.mark.parametrize("text", [
+    "A trip through the adventure of a lifetime #adventure",
+    "How to add a class to your homepage",
+    "We talk about advertising history",
+    "The best ideas of the year",
+    "",
+])
+def test_ordinary_words_that_only_look_similar_are_not_mistaken_for_sponsoring(text):
+    assert ap.select_cc_candidate([cc("x", description=text, title="A talk")], set()) is not None
+
+
+def test_the_youtube_paid_placement_flag_excludes_a_video():
+    assert ap.select_cc_candidate([cc("x", paid_placement=True)], set()) is None
+
+
+def test_the_real_bad_pick_from_this_project_is_now_refused():
+    """The Lowe's Madden stream: gaming category, a recorded live stream, '#ad' in the title."""
+    video = cc("i36PlsiPFqo", title="LIVE with Lowe's playing Madden 27, featuring Justin Jefferson! #ad",
+               category="20", was_live=True, views=16_976_029)
+    assert ap.select_cc_candidate([video], set()) is None
+    assert ap.looks_sponsored(video)
+
+
+def test_the_real_good_picks_from_this_project_still_pass():
+    talk = cc("AvikGCepgNY", title="The Last Normal Year", category="22", description="A video essay.")
+    woodwork = cc("BJAe7XHBhYw", title="Master Carpenter's Wood Corner Joints", category="26", description="Woodworking.")
+    assert ap.select_cc_candidate([talk, woodwork], set()) is not None
+
+
+def test_the_search_reads_live_and_paid_details_and_the_description(monkeypatch):
+    fake = FakeYouTube({"medium": ["a"], "long": []}, {"a": {
+        **detail("a"),
+        "liveStreamingDetails": {"actualStartTime": "2026-11-10T00:00:00Z"},
+        "paidProductPlacementDetails": {"hasPaidProductPlacement": True},
+    }})
+    fake.details["a"]["snippet"]["description"] = "x" * 3000
+    monkeypatch.setattr(ap.httpx, "get", fake.get)
+    video = ap.fetch_cc_candidates("en", now=NOW)[0]
+    asked = next(p for path, p in fake.calls if path == "videos")["part"]
+    assert "liveStreamingDetails" in asked and "paidProductPlacementDetails" in asked
+    assert video["was_live"] is True and video["paid_placement"] is True and len(video["description"]) == 2000
+
+
+def test_a_normal_video_has_no_live_or_paid_marks(monkeypatch):
+    fake = FakeYouTube({"medium": ["a"], "long": []}, {"a": detail("a")})
+    monkeypatch.setattr(ap.httpx, "get", fake.get)
+    video = ap.fetch_cc_candidates("en", now=NOW)[0]
+    assert video["was_live"] is False and video["paid_placement"] is False
+
+
+def test_the_default_blocked_categories_include_gaming_and_sports():
+    blocked = set(settings.AUTOPILOT_CC_BLOCK_CATEGORIES.split(","))
+    assert {"20", "17", "10", "24"} <= blocked and "22" not in blocked and "27" not in blocked
+
+
+# ─── Blocked title words ─────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("title", [
+    "Ramayana: MOVIE REVIEW!!! (spoiler free)",
+    "My honest reaction to the finale",
+    "Watching the new trailer",
+    "Full movie in 10 minutes",
+    "IND vs PAK U19 match highlights",
+    "Elden Ring gameplay part 3",
+    "Weekly box office recap",
+    "Best moments compilation",
+])
+def test_reviews_reactions_trailers_and_highlights_are_skipped(title):
+    assert ap.select_cc_candidate([cc("x", title=title)], set()) is None
+
+
+@pytest.mark.parametrize("title", [
+    "The Last Normal Year",
+    "How I reacted to a hard year: a lesson in calm",      # 'reacted' is not 'react'
+    "Why trailers lie: an essay on marketing",             # 'trailers' (plural) is not 'trailer'
+    "Master Carpenter's Wood Corner Joints",
+    "A review of the evidence for sleep",                  # 'review' alone is fine
+])
+def test_similar_looking_titles_are_not_blocked(title):
+    assert ap.select_cc_candidate([cc("x", title=title)], set()) is not None
+
+
+def test_the_blocked_words_can_be_changed_or_emptied(monkeypatch):
+    monkeypatch.setattr(settings, "AUTOPILOT_CC_BLOCK_WORDS", "essay")
+    assert ap.select_cc_candidate([cc("x", title="Why trailers lie: an essay")], set()) is None
+    assert ap.select_cc_candidate([cc("x", title="Full movie review")], set()) is not None
+    monkeypatch.setattr(settings, "AUTOPILOT_CC_BLOCK_WORDS", "")
+    assert ap.select_cc_candidate([cc("x", title="Full movie review")], set()) is not None
+
+
+def test_the_ramayana_review_picked_earlier_is_now_refused():
+    video = cc("w1", title="Ramayana: MOVIE REVIEW!!! (spoiler free) | Los angeles world premiere", category="24")
+    assert ap.has_blocked_word(video) and ap.select_cc_candidate([video], set()) is None

@@ -99,10 +99,21 @@ class Settings(BaseSettings):
     # views, ranked by views and likes. Each search costs 100 YouTube quota units.
     AUTOPILOT_CC_DAYS: int = 30
     AUTOPILOT_CC_MIN_VIEWS: int = 5000
-    # YouTube category ids never picked: a "Creative Commons" label on music, entertainment, film or TV
-    # content is often a mistake or hides licensed music. 1 Film, 10 Music, 24 Entertainment, 30 Movies,
-    # 31 Anime, 43 Shows, 44 Trailers.
-    AUTOPILOT_CC_BLOCK_CATEGORIES: str = "1,10,24,30,31,43,44"
+    # YouTube category ids never picked: a "Creative Commons" label on music, entertainment, film, TV, games
+    # or sport is often a mistake, or hides rights the uploader does not have (game and league licences,
+    # broadcast footage, licensed music). 1 Film, 10 Music, 17 Sports, 20 Gaming, 24 Entertainment,
+    # 30 Movies, 31 Anime, 43 Shows, 44 Trailers.
+    AUTOPILOT_CC_BLOCK_CATEGORIES: str = "1,10,17,20,24,30,31,43,44"
+    # Titles containing any of these words or phrases are never picked: reviews, reactions, trailers,
+    # highlights and game footage are made of other people's clips, so a "Creative Commons" label on them
+    # cannot be trusted. Comma separated, matched as whole words, ignoring case.
+    AUTOPILOT_CC_BLOCK_WORDS: str = (
+        "reaction,reactions,reacts,reacting,react,trailer,teaser,full movie,full episode,highlights,gameplay,"
+        "walkthrough,movie review,film review,box office,recap,compilation"
+    )
+    # Recordings of live streams are skipped by default: they carry chat overlays, sponsor reads and
+    # third-party footage. Turn on to allow them (for example official speeches).
+    AUTOPILOT_CC_ALLOW_LIVE_RECORDINGS: bool = False
     # Pages of 50 uploads to read when looking for an unused video.
     AUTOPILOT_MAX_PAGES: int = 10
 
