@@ -527,3 +527,9 @@ def test_the_retry_log_line_counts_the_try_correctly(sync_db, notes, caplog):
     with caplog.at_level(logging.INFO):
         ap.retry_failed_jobs(sync_db, NOW, notes)
     assert "(try 3)" in caplog.text and "(try 4)" not in caplog.text
+
+
+def test_the_cloud_run_says_whether_the_health_check_ping_was_sent(sync_db, cloud, capsys):
+    row_with(sync_db, schedule_on_youtube=False)
+    assert cp.main() == 0
+    assert "Health-check ping: sent" in capsys.readouterr().out

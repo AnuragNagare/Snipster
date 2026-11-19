@@ -87,9 +87,10 @@ def main() -> int:
     if summary["failed"]:
         print(f"{summary['failed']} post(s) failed. They are retried automatically unless the cause needs you "
               "(see the Activity page).")
-        alerts.ping_cloud_healthcheck(fail=True)
+        print("Health-check ping:", "sent" if alerts.ping_cloud_healthcheck(fail=True) else "not sent")
         return 1
-    alerts.ping_cloud_healthcheck()   # the dead-man's switch: it alerts when these pings stop
+    # the dead-man's switch: it alerts when these pings stop
+    print("Health-check ping:", "sent" if alerts.ping_cloud_healthcheck() else "not sent (not set up, or it failed)")
     logger.info(f"[CLOUD PUBLISHER] done, {summary['claimed']} post(s) handled")
     return 0
 

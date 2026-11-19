@@ -217,3 +217,11 @@ def test_the_worker_session_uses_this_engine(monkeypatch):
     session.close()
     assert made == [1]
     tasks._SessionFactory = None
+
+
+def test_tests_never_see_real_alert_settings():
+    """backend/.env holds the user's real Gmail login: no test may ever be able to email it."""
+    from app.core.config import settings
+
+    assert not settings.SMTP_USER and not settings.SMTP_PASSWORD and not settings.TELEGRAM_BOT_TOKEN
+    assert not settings.HEALTHCHECK_URL and not settings.HEALTHCHECK_CLOUD_URL

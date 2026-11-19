@@ -22,3 +22,17 @@ def sync_db(session_factory):
     session = session_factory()
     yield session
     session.close()
+
+
+@pytest.fixture(autouse=True)
+def no_real_alerts(monkeypatch):
+    """
+    Tests must never reach a real inbox, phone or health-check service. backend/.env may hold real Gmail,
+    Telegram and health-check settings, and the settings object reads it; blank them for every test.
+    A test that needs one sets it again itself.
+    """
+    from app.core.config import settings
+
+    for name in ("SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+                 "HEALTHCHECK_URL", "HEALTHCHECK_CLOUD_URL"):
+        monkeypatch.setattr(settings, name, "")
