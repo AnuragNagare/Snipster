@@ -94,3 +94,12 @@ Checks: backend 523 passed, 3 skipped (+11 in `tests/test_services/test_cloud_pu
 - `services/alerts.py`: `send()` now delivers to Telegram and/or email; new `telegram_configured`, `email_configured`, `_send_telegram`, `_send_email`; `configured()` means either. `core/config.py`: `SMTP_HOST` (smtp.gmail.com), `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_TO`. `.env.example` documented. `scripts/test_alert.py`. `.github/workflows/publisher.yml` passes `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_TO` (empty until the user stores them); the workflow-secrets test lists them.
 - `backend/.env`: empty placeholders added (backup `backend/.env.bak-before-email`, gitignored). No email address was written anywhere: the user has to supply it.
 - Not done: no real email has been sent (no credentials yet), so Gmail's behaviour (blocking, spam) is untested.
+
+## 2026-11-19: alerts verified, healthcheck wired, news category blocked, browser check
+Checks: backend 527 passed, 3 skipped.
+- Email: `scripts/test_alert.py` sent a real email through Gmail (`Email sent: True`). The test suite then failed 3 tests because it really emailed (the settings object reads `backend/.env`); `tests/conftest.py` now blanks all alert and health-check settings in every test (autouse), with a guard test. Up to three stray test emails titled like "Snipster: x" may have reached the user's inbox before this fix.
+- Cloud job: `cloud_publisher.main` prints "Health-check ping: sent" or "not sent". Workflow run 44558281873 succeeded and the ping was sent with the new secret.
+- Database: deleted 2 scheduled autopilot posts from the refused Ramayana review and set their 2 clips to rejected (previewed first, only SCHEDULED jobs deleted).
+- Browser check on https://snipster-two.vercel.app (already signed in from the user's own session; the assistant is not allowed to type passwords): no console errors; Activity page shows the cloud publisher badge, scheduler badge, toggles, schedule fields; the Review page shows the language selector, approval badges, "Regenerate caption"; Dashboard shows 0 posts and "2 dry-run posts are not shown".
+- `AUTOPILOT_CC_BLOCK_CATEGORIES` default now includes 25 (News & Politics) after autopilot picked Brandon Lehman's "Zohran's Fox News Interview Went HORRIBLY Wrong" (category 25, membership channel that clips TV segments). Test added.
+- First real upload attempted and refused by the permission system before anything ran: no job inserted, no upload, dry run unchanged. Helper script (scratchpad) refuses unless visibility is private.

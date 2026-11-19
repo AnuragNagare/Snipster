@@ -68,3 +68,10 @@
 ## Email alerts (2026-11-19)
 - Alerts go to Telegram and/or Gmail SMTP (`SMTP_USER`, `SMTP_PASSWORD` app password, optional `ALERT_EMAIL_TO`), in `backend/.env` for the laptop and as GitHub secrets for the cloud job. Test with `python scripts\test_alert.py` from `backend`. Not set up yet: waiting for the user's Gmail address and app password; until then alerts only appear in the logs.
 - Never write the user's email address or app password into the repository, a log line, or a commit; the workflow reads them from secrets.
+
+## State after the final checks (2026-11-19)
+- Alerts: Gmail works (real test mail sent). Cloud job pings healthchecks.io each run. Telegram not used.
+- Content filters now also block category 25 (News & Politics). Two rehearsal posts from the refused Fox News commentary pick are still scheduled (dry run is ON, so harmless): ask the user before deleting them.
+- No real YouTube upload has happened. The assistant cannot start one (permission system). The user can press "Publish YouTube Shorts" on an approved clip in the Review page.
+- Known UI gap: Edit (trim, caption, subtitles) shows only for pending clips; with auto-approve on, no clip is pending.
+- Do not type passwords into the live site; the user's browser session is already signed in.

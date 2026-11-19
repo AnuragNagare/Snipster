@@ -102,8 +102,8 @@ class Settings(BaseSettings):
     # YouTube category ids never picked: a "Creative Commons" label on music, entertainment, film, TV, games
     # or sport is often a mistake, or hides rights the uploader does not have (game and league licences,
     # broadcast footage, licensed music). 1 Film, 10 Music, 17 Sports, 20 Gaming, 24 Entertainment,
-    # 30 Movies, 31 Anime, 43 Shows, 44 Trailers.
-    AUTOPILOT_CC_BLOCK_CATEGORIES: str = "1,10,17,20,24,30,31,43,44"
+    # 25 News & Politics (commentary over TV broadcast clips), 30 Movies, 31 Anime, 43 Shows, 44 Trailers.
+    AUTOPILOT_CC_BLOCK_CATEGORIES: str = "1,10,17,20,24,25,30,31,43,44"
     # Titles containing any of these words or phrases are never picked: reviews, reactions, trailers,
     # highlights and game footage are made of other people's clips, so a "Creative Commons" label on them
     # cannot be trusted. Comma separated, matched as whole words, ignoring case.

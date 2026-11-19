@@ -678,3 +678,10 @@ def test_the_blocked_words_can_be_changed_or_emptied(monkeypatch):
 def test_the_ramayana_review_picked_earlier_is_now_refused():
     video = cc("w1", title="Ramayana: MOVIE REVIEW!!! (spoiler free) | Los angeles world premiere", category="24")
     assert ap.has_blocked_word(video) and ap.select_cc_candidate([video], set()) is None
+
+
+def test_news_and_politics_commentary_is_blocked():
+    """A commentary channel clipping Fox News segments was picked: category 25."""
+    video = cc("wyIwEtPQYSE", title="Zohran's Fox News Interview Went HORRIBLY Wrong", category="25")
+    assert ap.select_cc_candidate([video], set()) is None
+    assert "25" in settings.AUTOPILOT_CC_BLOCK_CATEGORIES.split(",")
