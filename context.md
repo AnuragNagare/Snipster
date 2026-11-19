@@ -75,3 +75,7 @@
 - No real YouTube upload has happened. The assistant cannot start one (permission system). The user can press "Publish YouTube Shorts" on an approved clip in the Review page.
 - Known UI gap: Edit (trim, caption, subtitles) shows only for pending clips; with auto-approve on, no clip is pending.
 - Do not type passwords into the live site; the user's browser session is already signed in.
+
+## Publish button and Google consent screen (2026-11-19, evening)
+- A clip that autopilot only rehearsed can now be published for real from the Review page (manual post, ignores dry run, uses the saved visibility = private). Rehearsals display as "rehearsal (nothing uploaded)".
+- Google Cloud project used by the app: "Earth Engine default project", Google Auth Platform > Audience: Testing, External, 1 test user. In Testing the YouTube sign-in (refresh token) expires after 7 days: reconnect in Settings weekly, or the cloud and laptop posts fail with a sign-in alert (emailed). Publishing needs Branding + verification and a real domain; not pursued.

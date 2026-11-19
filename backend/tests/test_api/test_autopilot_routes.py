@@ -325,3 +325,45 @@ async def test_no_goes_public_for_rehearsals_past_times_or_unposted(client, make
     await seed_job(maker, status=m.PublishStatus.PUBLISHED, post_id="old", when=NOW - timedelta(hours=1))  # time passed
     await seed_job(maker, status=m.PublishStatus.SCHEDULED, post_id=None, when=NOW + timedelta(hours=1))  # not uploaded
     assert all(j["goes_public_at"] is None for j in (await client.get("/api/activity")).json()["jobs"])
+
+
+# ─── Publishing a clip that only has a rehearsal ─────────────────────────────
+
+async def _clip_with_job(maker, *, status, post_id):
+    async with maker() as s:
+        video = m.SourceVideo(ownership_confirmed=True, status=m.VideoStatus.READY)
+        s.add(video)
+        await s.flush()
+        clip = m.Clip(source_video_id=video.id, start_time=0, end_time=30, caption="c", storage_key="k",
+                      approval_status=m.ApprovalStatus.APPROVED, render_status=m.RenderStatus.DONE)
+        s.add(clip)
+        await s.flush()
+        s.add(m.PublishJob(clip_id=clip.id, platform=m.Platform.YOUTUBE, status=status, platform_post_id=post_id,
+                           autopilot=True, retry_count=0, published_at=NOW))
+        await s.commit()
+        return clip.id
+
+
+@pytest.fixture
+def queued_publish(monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.api.routes.publish.publish_clip_task", SimpleNamespace(delay=lambda job_id: calls.append(job_id)))
+    return calls
+
+
+async def test_a_rehearsed_clip_can_be_published_for_real(client, maker, queued_publish):
+    clip_id = await _clip_with_job(maker, status=m.PublishStatus.PUBLISHED, post_id="dry-run")
+    r = await client.post(f"/api/clips/{clip_id}/publish", json={"platforms": ["youtube"]})
+    assert r.status_code == 200 and len(r.json()) == 1 and len(queued_publish) == 1
+
+
+async def test_a_clip_really_published_is_not_published_twice(client, maker, queued_publish):
+    clip_id = await _clip_with_job(maker, status=m.PublishStatus.PUBLISHED, post_id="realYouTubeId")
+    r = await client.post(f"/api/clips/{clip_id}/publish", json={"platforms": ["youtube"]})
+    assert r.status_code == 200 and r.json() == [] and queued_publish == []
+
+
+async def test_a_clip_already_waiting_to_post_is_not_queued_again(client, maker, queued_publish):
+    clip_id = await _clip_with_job(maker, status=m.PublishStatus.SCHEDULED, post_id=None)
+    r = await client.post(f"/api/clips/{clip_id}/publish", json={"platforms": ["youtube"]})
+    assert r.json() == [] and queued_publish == []

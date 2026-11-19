@@ -73,8 +73,13 @@ export default function ClipCard({ clip }: Props) {
   const handlePublish = async () => {
     setPublishing(true);
     try {
-      await publishClip(clip.id, ["youtube"]);
-      showToast("Publishing to YouTube Shorts…", "success");
+      const jobs = await publishClip(clip.id, ["youtube"]);
+      showToast(
+        jobs.length > 0
+          ? "Publishing to YouTube Shorts…"
+          : "Nothing new to publish: this clip is already published or waiting. See the list below.",
+        jobs.length > 0 ? "success" : "info"
+      );
       setShowPublishJobs(true);
     } catch (err: any) {
       showToast(err?.response?.data?.detail || "Publish failed.", "error");

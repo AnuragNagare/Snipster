@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.api.deps import get_session
 from app.db.models import ApprovalStatus, Clip, Platform, PublishJob, PublishStatus
@@ -47,6 +47,8 @@ async def publish_clip(
                 PublishJob.clip_id == clip_id,
                 PublishJob.platform == platform,
                 PublishJob.status.not_in([PublishStatus.FAILED]),
+                # A dry-run rehearsal uploaded nothing, so it must not block a real publish.
+                or_(PublishJob.platform_post_id.is_(None), PublishJob.platform_post_id != "dry-run"),
             )
         )
         if existing.scalars().first():

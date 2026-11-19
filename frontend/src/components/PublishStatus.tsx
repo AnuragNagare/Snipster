@@ -59,7 +59,8 @@ export default function PublishStatus({ clipId }: Props) {
 
           <div className="flex items-center gap-2">
             <span className={`text-xs font-medium ${statusStyle[job.status]}`}>
-              {job.status}
+              {/* "dry-run" is autopilot's rehearsal: nothing was uploaded */}
+              {job.platform_post_id === "dry-run" ? "rehearsal (nothing uploaded)" : job.status}
             </span>
 
             {job.status === "published" && job.platform_post_url && (
