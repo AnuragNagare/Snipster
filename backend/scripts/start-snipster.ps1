@@ -124,7 +124,21 @@ try {
     $env:PYTHONIOENCODING = 'utf-8'
     $env:PYTHONUNBUFFERED = '1'
 
+    $lastBrokerCheck = Get-Date
     while (-not (Test-Path $StopFlag)) {
+        # A worker that lost its queue connection stays alive but takes no jobs: restart it.
+        if (((Get-Date) - $lastBrokerCheck).TotalSeconds -ge 30) {
+            $lastBrokerCheck = Get-Date
+            $w = $kids | Where-Object { $_.Name -eq 'worker' }
+            $workerLog = Join-Path $LogDir 'worker.err.log'
+            if ($w.Proc -and -not $w.Proc.HasExited -and (Test-Path $workerLog)) {
+                $tail = @(Get-Content -Path $workerLog -Tail 400 -ErrorAction SilentlyContinue)
+                if (Test-BrokerStuck $tail (Get-Date) 10) {
+                    Write-Log 'worker lost its connection to the job queue more than 10 minutes ago and did not reconnect: restarting it'
+                    Stop-ProcessTree $w.Proc.Id
+                }
+            }
+        }
         foreach ($k in $kids) {
             if ($k.Proc -and $k.Proc.HasExited) {
                 $up = (Get-Date) - $k.Started

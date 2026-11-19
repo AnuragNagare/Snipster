@@ -79,3 +79,8 @@
 ## Publish button and Google consent screen (2026-11-19, evening)
 - A clip that autopilot only rehearsed can now be published for real from the Review page (manual post, ignores dry run, uses the saved visibility = private). Rehearsals display as "rehearsal (nothing uploaded)".
 - Google Cloud project used by the app: "Earth Engine default project", Google Auth Platform > Audience: Testing, External, 1 test user. In Testing the YouTube sign-in (refresh token) expires after 7 days: reconnect in Settings weekly, or the cloud and laptop posts fail with a sign-in alert (emailed). Publishing needs Branding + verification and a real domain; not pursued.
+
+## Reliability notes (2026-11-19, night)
+- The worker can lose its Redis connection when the network changes or the laptop wakes; the launcher now restarts it after 10 minutes of silence (log-based watchdog). If posts stop going out, check `%LOCALAPPDATA%\Snipster\logs\launcher.log` for "restarting it".
+- YouTube sign-in lasts 7 days (Google Testing mode). Symptom: publish jobs FAILED with "Google rejected the saved YouTube sign-in" and an email alert. Fix: Settings > Disconnect > Connect, then Retry the failed posts on the Activity page. Retry goes through the laptop's queue.
+- First real upload still pending (needs a fresh sign-in).

@@ -45,3 +45,25 @@ function Stop-ProcessTree([int]$ProcessId) {
 function Test-ProcessAlive([int]$ProcessId) {
     return [bool](Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
 }
+
+# True when the worker's log says it lost its connection to the job queue and has not reconnected within
+# $Minutes. The worker process stays alive in that state but takes no jobs, so the launcher must restart it.
+# Celery writes "Connection to broker lost" when it drops and "Connected to ..." when it is back.
+function Test-BrokerStuck([string[]]$Lines, [datetime]$Now, [int]$Minutes = 10) {
+    $lostIndex = -1
+    $lostTime = $null
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($Lines[$i] -match 'Connection to broker lost') {
+            $lostIndex = $i
+            $lostTime = $null
+            if ($Lines[$i] -match '^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})') {
+                $lostTime = [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
+            }
+        }
+    }
+    if ($lostIndex -lt 0 -or $null -eq $lostTime) { return $false }
+    for ($j = $lostIndex + 1; $j -lt $Lines.Count; $j++) {
+        if ($Lines[$j] -match 'Connected to ') { return $false }
+    }
+    return (($Now - $lostTime).TotalMinutes -ge $Minutes)
+}

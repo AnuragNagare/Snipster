@@ -225,3 +225,17 @@ def test_tests_never_see_real_alert_settings():
 
     assert not settings.SMTP_USER and not settings.SMTP_PASSWORD and not settings.TELEGRAM_BOT_TOKEN
     assert not settings.HEALTHCHECK_URL and not settings.HEALTHCHECK_CLOUD_URL
+
+
+def test_the_launchers_worker_watchdog_logic_passes_its_selfcheck():
+    """The launcher restarts a worker that lost its queue connection and never came back (PowerShell, Windows only)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    if sys.platform != "win32":
+        pytest.skip("the launcher is a Windows script")
+    script = Path(__file__).resolve().parents[2] / "scripts" / "selfcheck.ps1"
+    out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                         capture_output=True, text=True, timeout=120)
+    assert "ALL OK" in out.stdout, out.stdout + out.stderr
