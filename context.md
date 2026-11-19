@@ -84,3 +84,8 @@
 - The worker can lose its Redis connection when the network changes or the laptop wakes; the launcher now restarts it after 10 minutes of silence (log-based watchdog). If posts stop going out, check `%LOCALAPPDATA%\Snipster\logs\launcher.log` for "restarting it".
 - YouTube sign-in lasts 7 days (Google Testing mode). Symptom: publish jobs FAILED with "Google rejected the saved YouTube sign-in" and an email alert. Fix: Settings > Disconnect > Connect, then Retry the failed posts on the Activity page. Retry goes through the laptop's queue.
 - First real upload still pending (needs a fresh sign-in).
+
+## Real uploads work (2026-11-19, night)
+- The whole path is proven once on real data: pick, clip, caption, render, manual publish from the Review page, private upload with the CC credit line. Two private videos exist on the channel (ids `OH8Q10Kv6Oc`, `RrRGVrtZ6L4`).
+- The app's YouTube permission is upload-only: it cannot read, edit or delete videos. Verify uploads in YouTube Studio (studio.youtube.com > Content), not on the public channel page (private videos are not listed there). Studio can be read through the user's signed-in Chrome.
+- Titles come from `make_title()`; the laptop worker and the cloud job use it after they restart/redeploy (the cloud job picks up `main` on every run).

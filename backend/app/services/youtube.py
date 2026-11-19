@@ -32,6 +32,24 @@ def _as_aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def make_title(caption: str | None) -> str:
+    """
+    A YouTube title (at most 100 characters) from the caption, without cutting a word in half.
+    Prefers ending at the last full sentence that fits; otherwise cuts at the last space and adds "...".
+    """
+    text = " ".join((caption or "").split())
+    if not text:
+        return "New Short"
+    if len(text) <= 100:
+        return text
+    head = text[:100]
+    sentence_end = max(head.rfind(". "), head.rfind("? "), head.rfind("! "))
+    if sentence_end >= 40:   # a very short first sentence would make a poor title
+        return head[: sentence_end + 1]
+    cut = head[:97].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return (cut or head[:97]) + "..."
+
+
 class YouTubeService:
     # ─── Tokens ──────────────────────────────────────────────────────────────
 
@@ -133,7 +151,7 @@ class YouTubeService:
         try:
             storage_service.download_to_file(clip.storage_key, tmp_path)
 
-            title = clip.caption[:100] if clip.caption else "New Short"
+            title = make_title(clip.caption)
             description = f"{clip.caption or ''}\n\n{clip.hashtags or ''}\n\n"
             if credit:  # a Creative Commons source must be credited in the post
                 description += f"{credit}\n\n"

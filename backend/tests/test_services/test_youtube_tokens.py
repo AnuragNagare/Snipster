@@ -244,3 +244,76 @@ def test_the_callback_records_the_token_expiry():
 
     src = inspect.getsource(auth.google_callback)
     assert "yt_token_expiry" in src and "expires_in" in src
+
+
+# ─── Titles ──────────────────────────────────────────────────────────────────
+
+def test_a_short_caption_is_the_title_as_it_is():
+    from app.services.youtube import make_title
+
+    assert make_title("A short caption.") == "A short caption."
+    assert make_title("  spaced \n out   text ") == "spaced out text"
+
+
+def test_no_caption_gives_the_default_title():
+    from app.services.youtube import make_title
+
+    assert make_title(None) == make_title("") == make_title("   ") == "New Short"
+
+
+def test_a_long_caption_ends_at_a_full_sentence_when_one_fits():
+    from app.services.youtube import make_title
+
+    caption = "Digital media gave a voice to marginalized communities, but it also hijacked our attention. Has our media permanently broken trust?"
+    title = make_title(caption)
+    assert title == "Digital media gave a voice to marginalized communities, but it also hijacked our attention." and len(title) <= 100
+
+
+def test_the_real_caption_that_was_cut_mid_word_now_ends_cleanly():
+    from app.services.youtube import make_title
+
+    caption = ("Digital media gave a voice to marginalized communities, but it also perfected the art of hijacking our attention. "
+               "Has our evolving media environment permanently broken our trust in institutions?")
+    title = make_title(caption)
+    assert not title.endswith("hijacking o") and len(title) <= 100
+    assert title.endswith("...") or title.endswith(".")
+    assert title.startswith("Digital media gave a voice")
+
+
+def test_a_long_caption_with_no_early_sentence_is_cut_at_a_word_with_dots():
+    from app.services.youtube import make_title
+
+    caption = "word " * 60
+    title = make_title(caption)
+    assert title.endswith("...") and len(title) <= 100 and "wor..." not in title and title[:-3].split()[-1] == "word"
+
+
+def test_a_very_short_first_sentence_is_not_used_as_the_whole_title():
+    from app.services.youtube import make_title
+
+    caption = "Wow. " + "and then this very long second sentence keeps going without ending for a really long time okay " * 2
+    assert make_title(caption).endswith("...")
+
+
+def test_one_unbroken_long_word_still_fits():
+    from app.services.youtube import make_title
+
+    title = make_title("x" * 300)
+    assert len(title) <= 100 and title.endswith("...")
+
+
+def test_the_upload_uses_the_clean_title(monkeypatch):
+    import json as _json
+    from types import SimpleNamespace as NS
+
+    from app.services import youtube as yt
+    from cryptography.fernet import Fernet
+    from app.core.security import encrypt_token
+
+    monkeypatch.setattr(settings, "TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(yt.storage_service, "download_to_file", lambda key, path: open(path, "wb").write(b"v"))
+    sent = {}
+    monkeypatch.setattr(yt.httpx, "post", lambda url, **kw: sent.update(meta=_json.loads(kw["files"]["metadata"][1])) or NS(status_code=200, json=lambda: {"id": "p"}, text=""))
+    user = NS(yt_access_token=encrypt_token("t"), yt_refresh_token=None, yt_token_expiry=None)
+    yt.youtube_service.upload(NS(storage_key="k", caption="First sentence is long enough to be a title on its own, yes. " + "more " * 40, hashtags=""), user)
+    assert sent["meta"]["snippet"]["title"] == "First sentence is long enough to be a title on its own, yes."

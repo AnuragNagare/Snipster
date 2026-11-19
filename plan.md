@@ -156,3 +156,6 @@ Still open: reboot and lid-close test (user will do last), Hindi on real speech,
 
 ## Worker watchdog and first real upload (2026-11-19, night)
 Done: the launcher restarts a worker that lost its job-queue connection for 10 minutes (see changes.md). First real upload: attempted, failed on an expired YouTube sign-in (Testing mode, 7 days): the user reconnects YouTube in Settings and presses Retry; weekly reconnect is the accepted routine. Not yet seen: a real private upload in YouTube Studio, the credit line in a real description, the Dashboard with real numbers.
+
+## First real uploads (2026-11-19, night): DONE and verified in YouTube Studio
+Two private Shorts uploaded through the Review page; credit line, subtitles and privacy checked in Studio. Open: titles of those two are cut mid-word (fixed for future uploads), nothing public yet, Google audit pending, weekly reconnect of YouTube (Testing mode), reboot/lid test, Hindi on real speech, Exact-time through YouTube on real YouTube.
